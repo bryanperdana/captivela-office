@@ -29,6 +29,9 @@ import {
   getSettingsForRenderer,
   installContextMenu,
   installNavigationGuard,
+  ensureProductDocumentsDir,
+  productDevUserDataDir,
+  readProductEnvironment,
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
@@ -1966,9 +1969,7 @@ async function saveDialog(event: IpcMainInvokeEvent, options: SaveDialogOptions)
 
 /** default folder where new files land on their first (silent) save; shared with the other editors via shell */
 export function defaultSaveDir(): string {
-  const dir = join(app.getPath('documents'), 'GenOffice')
-  mkdirSync(dir, { recursive: true })
-  return dir
+  return ensureProductDocumentsDir(app.getPath('documents'))
 }
 
 /** first free path for fileName inside dir: name.ext, name-2.ext, name-3.ext… */
@@ -3790,8 +3791,14 @@ export function startDocsStandalone(): void {
   installContextMenu(app, () => contextMenuLabels(getUiLang()))
   // dev runs must not share the packaged app's userData (recent files, AI settings)
   // or its single-instance lock — otherwise `npm run dev` silently quits whenever
-  // the installed GenOffice Docs is open and forwards its argv there instead.
-  if (isDev) app.setPath('userData', join(app.getPath('appData'), 'GenOffice Docs Dev'))
+  // the installed Captivela Docs is open and forwards its argv there instead.
+  if (isDev) {
+    app.setPath(
+      'userData',
+      readProductEnvironment(process.env, 'CAPTIVELA_OFFICE_USER_DATA', 'GENOFFICE_USER_DATA') ??
+        productDevUserDataDir(app.getPath('appData')),
+    )
+  }
 
   const hasSingleInstanceLock = app.requestSingleInstanceLock()
   if (!hasSingleInstanceLock) {
@@ -3815,7 +3822,12 @@ export function startDocsStandalone(): void {
   registerDocsIpc()
 
   app.whenReady().then(() => {
-    setUiLang(normalizeLang(process.env.GENOFFICE_LANG ?? app.getLocale()))
+    setUiLang(
+      normalizeLang(
+        readProductEnvironment(process.env, 'CAPTIVELA_OFFICE_LANG', 'GENOFFICE_LANG') ??
+          app.getLocale(),
+      ),
+    )
     // packaged builds get the Dock icon from icon.icns; dev shows Electron's default
     if (isDev && process.platform === 'darwin') {
       app.dock?.setIcon(join(app.getAppPath(), 'build/icon.png'))

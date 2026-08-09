@@ -1,10 +1,8 @@
 import { spawn } from 'node:child_process'
 import {
   copyFileSync,
-  cpSync,
   existsSync,
   readFileSync,
-  readdirSync,
   renameSync,
   writeFileSync,
 } from 'node:fs'
@@ -38,6 +36,9 @@ import {
   editMenuTemplate,
   installContextMenu,
   installNavigationGuard,
+  migrateLegacyDirectory,
+  productDevUserDataDir,
+  readProductEnvironment,
   windowMenuTemplate,
 } from '@genoffice/electron-utils'
 import { readAppSettings, writeAppSetting } from './app-settings'
@@ -143,15 +144,20 @@ import { isUpdateChannel, type UpdateChannel } from '../shared/update-api'
 if (!app.isPackaged)
   app.setPath(
     'userData',
-    process.env.GENOFFICE_USER_DATA ?? join(app.getPath('appData'), 'GenOffice Dev'),
+    readProductEnvironment(
+      process.env,
+      'CAPTIVELA_OFFICE_USER_DATA',
+      'GENOFFICE_USER_DATA',
+    ) ?? productDevUserDataDir(app.getPath('appData')),
   )
 
-// The product rename from "AI Office" to GenOffice changed the userData path; migrate old user data once
+// Preserve settings from both historical product names without removing either source.
 if (app.isPackaged) {
-  const oldDir = join(app.getPath('appData'), 'AI Office')
   const newDir = app.getPath('userData')
-  const newEmpty = !existsSync(newDir) || readdirSync(newDir).length === 0
-  if (newEmpty && existsSync(oldDir)) cpSync(oldDir, newDir, { recursive: true })
+  migrateLegacyDirectory(newDir, [
+    join(app.getPath('appData'), 'GenOffice'),
+    join(app.getPath('appData'), 'AI Office'),
+  ])
 }
 
 // module build outputs: packaged builds carry them as extraResources
@@ -207,8 +213,13 @@ let uiLang: Lang | null = null
 
 function currentLang(): Lang {
   if (uiLang) return uiLang
-  if (process.env.GENOFFICE_LANG) {
-    uiLang = normalizeLang(process.env.GENOFFICE_LANG)
+  const environmentLang = readProductEnvironment(
+    process.env,
+    'CAPTIVELA_OFFICE_LANG',
+    'GENOFFICE_LANG',
+  )
+  if (environmentLang) {
+    uiLang = normalizeLang(environmentLang)
     setUiLang(uiLang)
     return uiLang
   }

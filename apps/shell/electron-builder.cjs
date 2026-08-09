@@ -23,7 +23,7 @@
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
 
-const updateUrl = process.env.GENOFFICE_UPDATE_URL
+const updateUrl = process.env.CAPTIVELA_OFFICE_UPDATE_URL || process.env.GENOFFICE_UPDATE_URL
 const releaseSigning = process.env.CAPTIVELA_OFFICE_RELEASE_SIGNING === '1'
 
 // The module trees are electron-vite outputs produced by build:all; a missing

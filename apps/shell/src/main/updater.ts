@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
+import { readProductEnvironment } from '@genoffice/electron-utils'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateInfo } from 'electron-updater'
 import { createI18n, getUiLang, htmlLang } from '@genoffice/i18n'
@@ -314,8 +315,13 @@ export function initAutoUpdater(
   started = true
 
   // dev preview of the update window with a simulated download
-  if (!app.isPackaged && process.env.GENOFFICE_FAKE_UPDATE) {
-    initFakeUpdate(getWindow, process.env.GENOFFICE_FAKE_UPDATE)
+  const fakeUpdateVersion = readProductEnvironment(
+    process.env,
+    'CAPTIVELA_OFFICE_FAKE_UPDATE',
+    'GENOFFICE_FAKE_UPDATE',
+  )
+  if (!app.isPackaged && fakeUpdateVersion) {
+    initFakeUpdate(getWindow, fakeUpdateVersion)
     return
   }
   // Unpacked runs have no app-update.yml and must not hit the CDN with a

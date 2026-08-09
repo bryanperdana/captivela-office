@@ -28,8 +28,10 @@ import { gskApiKey, gskSlideGenerate, setGskProxyUrl } from '@genoffice/ai-searc
 import {
   appMenuLabels,
   contextMenuLabels,
+  ensureProductDocumentsDir,
   installContextMenu,
   installNavigationGuard,
+  readProductEnvironment,
   safeExternalUrl,
 } from '@genoffice/electron-utils'
 import { getUiLang, normalizeLang, setUiLang } from '@genoffice/i18n'
@@ -684,9 +686,9 @@ async function openAndBuild(
   }
 }
 
-/** Directory where AI-generated drafts are saved: <Documents>/GenOffice/ */
+/** Directory where AI-generated drafts are saved: <Documents>/Captivela Office/. */
 function getDraftsDir(): string {
-  return join(app.getPath('documents'), 'GenOffice')
+  return ensureProductDocumentsDir(app.getPath('documents'))
 }
 
 /** Fallback draft filename: <untitled label>-YYYYMMDD-HHmmss.pptx */
@@ -3920,11 +3922,16 @@ export function startSlidesStandalone(): void {
     app.commandLine.appendSwitch('remote-debugging-port', process.env.SLIDES_CDP_PORT)
     app.commandLine.appendSwitch('remote-allow-origins', '*')
   }
-  // GENOFFICE_USER_DATA: test drivers point this at a scratch dir so automated
+  // CAPTIVELA_OFFICE_USER_DATA: test drivers point this at a scratch dir so automated
   // instances get their own userData AND single-instance lock (the lock is scoped
   // to userData), allowing parallel instances alongside a normal dev run.
-  if (!app.isPackaged && process.env.GENOFFICE_USER_DATA) {
-    app.setPath('userData', process.env.GENOFFICE_USER_DATA)
+  const userDataOverride = readProductEnvironment(
+    process.env,
+    'CAPTIVELA_OFFICE_USER_DATA',
+    'GENOFFICE_USER_DATA',
+  )
+  if (!app.isPackaged && userDataOverride) {
+    app.setPath('userData', userDataOverride)
   }
   // The main process's Node fetch (undici) does not use the system proxy by default, so access
   // from mainland China to overseas LLM APIs like api.anthropic.com hits ETIMEDOUT on direct
@@ -3956,7 +3963,12 @@ export function startSlidesStandalone(): void {
   if (argPath && existsSync(argPath)) pendingOpenPath = argPath
 
   app.whenReady().then(async () => {
-    setUiLang(normalizeLang(process.env.GENOFFICE_LANG ?? app.getLocale()))
+    setUiLang(
+      normalizeLang(
+        readProductEnvironment(process.env, 'CAPTIVELA_OFFICE_LANG', 'GENOFFICE_LANG') ??
+          app.getLocale(),
+      ),
+    )
     registerSlidesIpc()
     registerAiIpc()
     registerProjectIpc()

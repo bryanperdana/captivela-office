@@ -40,6 +40,7 @@ import {
   getSettingsForRenderer,
   installContextMenu,
   installNavigationGuard,
+  readProductEnvironment,
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
@@ -2796,16 +2797,26 @@ async function applyMainProcessProxy(): Promise<void> {
 export function startSheetsStandalone(): void {
   installNavigationGuard(app)
   installContextMenu(app, () => contextMenuLabels(getUiLang()))
-  // GENOFFICE_USER_DATA: test drivers point this at a scratch dir so automated
+  // CAPTIVELA_OFFICE_USER_DATA: test drivers point this at a scratch dir so automated
   // instances get their own userData AND single-instance lock (the lock is scoped
   // to userData), allowing parallel instances alongside a normal dev run.
   // Same dev-only hook as apps/slides/src/main/slides-main.ts.
-  if (!app.isPackaged && process.env.GENOFFICE_USER_DATA) {
-    app.setPath('userData', process.env.GENOFFICE_USER_DATA)
+  const userDataOverride = readProductEnvironment(
+    process.env,
+    'CAPTIVELA_OFFICE_USER_DATA',
+    'GENOFFICE_USER_DATA',
+  )
+  if (!app.isPackaged && userDataOverride) {
+    app.setPath('userData', userDataOverride)
   }
   void applyMainProcessProxy()
   app.whenReady().then(() => {
-    setUiLang(normalizeLang(process.env.GENOFFICE_LANG ?? app.getLocale()))
+    setUiLang(
+      normalizeLang(
+        readProductEnvironment(process.env, 'CAPTIVELA_OFFICE_LANG', 'GENOFFICE_LANG') ??
+          app.getLocale(),
+      ),
+    )
     app.setAccessibilitySupportEnabled(true)
     installApplicationMenu()
     startCaptureServer()
