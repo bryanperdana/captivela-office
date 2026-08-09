@@ -1,5 +1,5 @@
 /**
- * Search utilities (main process) — gsk (Genspark CLI) first, then Serper Google API,
+ * Search utilities (main process) — gsk (hosted service CLI) first, then Serper Google API,
  * with DuckDuckGo as the last resort. The Serper/DuckDuckGo logic mirrors an earlier
  * web_search / google_image_search implementation. Runs in the main process
  * (Node fetch / child process) to avoid renderer CORS; the Serper key reuses SERPER_API_KEY.

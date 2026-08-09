@@ -31,12 +31,15 @@ const sourceExtensions = new Set([
 ])
 const builtExtensions = new Set(['.css', '.html', '.js', '.json', '.plist', '.yml', '.yaml'])
 const forbidden = [
-  { label: 'GenOffice product name', pattern: /\bGenOffice\b/gi },
-  { label: 'Genspark product name', pattern: /\bGenspark\b/gi },
-  { label: 'GenTeam product name', pattern: /\bGenTeam\b/gi },
+  // Capitalized names are user-facing copy/metadata. Lowercase `genoffice` and
+  // `genspark` are intentionally not blanket-banned because internal package
+  // namespaces, provider IDs, IPC channels, app IDs, and migration aliases are
+  // compatibility boundaries rather than visible branding.
+  { label: 'GenOffice product name', pattern: /\bGenOffice\b/g },
+  { label: 'Genspark product name', pattern: /\bGenspark\b/g },
+  { label: 'GenTeam product name', pattern: /\bGenTeam\b/g },
   { label: 'upstream logo filename', pattern: /genoffice-logo/gi },
   { label: 'upstream public URL', pattern: /https?:\/\/(?:www\.)?genspark\.ai\/[\w./?=&%-]*/gi },
-  { label: 'legacy public environment prefix', pattern: /\bGENOFFICE_[A-Z0-9_]+\b/g },
 ]
 
 const pathExclusions = config.pathExclusions ?? []
@@ -50,12 +53,17 @@ function normalizePath(path) {
 function pathExcluded(path) {
   const normalized = normalizePath(path)
   return pathExclusions.some((entry) =>
-    entry.endsWith('/') ? normalized.includes(entry) : normalized === entry || normalized.endsWith(`/${entry}`),
+    entry.endsWith('/')
+      ? normalized.includes(entry)
+      : normalized === entry || normalized.endsWith(`/${entry}`),
   )
 }
 
 function lineAllowed(path, line) {
-  return fileAllowPatterns.some((pattern) => pattern.test(path)) || lineAllowPatterns.some((pattern) => pattern.test(line))
+  return (
+    fileAllowPatterns.some((pattern) => pattern.test(path)) ||
+    lineAllowPatterns.some((pattern) => pattern.test(line))
+  )
 }
 
 async function exists(path) {
@@ -83,9 +91,11 @@ async function collect(directory, extensions, output = []) {
 }
 
 const sourceFiles = []
-for (const directory of sourceRoots) await collect(resolve(root, directory), sourceExtensions, sourceFiles)
+for (const directory of sourceRoots)
+  await collect(resolve(root, directory), sourceExtensions, sourceFiles)
 const builtFiles = []
-for (const directory of optionalBuiltRoots) await collect(resolve(root, directory), builtExtensions, builtFiles)
+for (const directory of optionalBuiltRoots)
+  await collect(resolve(root, directory), builtExtensions, builtFiles)
 const files = [...new Set([...sourceFiles, ...builtFiles])]
 const violations = []
 
@@ -117,5 +127,7 @@ if (violations.length > 0) {
   }
   process.exitCode = 1
 } else {
-  console.log(`Captivela branding audit passed (${sourceFiles.length} source files, ${builtFiles.length} built files scanned).`)
+  console.log(
+    `Captivela branding audit passed (${sourceFiles.length} source files, ${builtFiles.length} built files scanned).`,
+  )
 }

@@ -135,7 +135,7 @@ export async function runToolCallingCheck(
  * The renderer picks the provider and may carry an edited model/base URL, but
  * the API key is always read from secure storage here — the renderer has never
  * been given one to send back. `fallbackApiKey` covers providers whose
- * credential lives elsewhere (Genspark takes it from the gsk login state).
+ * credential lives elsewhere (hosted service takes it from the gsk login state).
  */
 export function resolveRequestConfig(
   store: AiSettingsStore,
@@ -161,7 +161,9 @@ export function resolveRequestConfig(
     if (!checked.ok) return { ok: false, error: checked.error, kind: 'provider' }
     baseUrl = checked.value
   }
-  const model = (fromRenderer?.model ?? storedConfig?.model ?? '').trim().slice(0, AI_SETTINGS_LIMITS.model)
+  const model = (fromRenderer?.model ?? storedConfig?.model ?? '')
+    .trim()
+    .slice(0, AI_SETTINGS_LIMITS.model)
   const apiKey = storedConfig?.apiKey || (fallbackApiKey?.(provider) ?? '')
 
   if (!apiKey && !meta.apiKeyOptional) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import appIcon from './assets/app-icon.png'
+import { BrandLogo } from '@genoffice/ui'
 import { useI18n } from './locale'
 import type { StringKey } from './locale'
 import './onboarding.css'
@@ -15,16 +15,14 @@ interface Slide {
   subtitleKey: StringKey
   /** 16px muted paragraph below the title block */
   bodyKey?: StringKey
-  /** render the body in the dimmer footnote gray (slide 3's credits disclaimer) */
+  /** render the body in the dimmer footnote gray */
   bodyDim?: boolean
-  /** community slide shows the credits offer panel with the "Join GenTeam" call-to-action */
-  showOffer?: boolean
   art: 'logo' | 'gift' | 'check'
 }
 
 const SLIDES: readonly Slide[] = [
   { titleKey: 'onbTitle1', subtitleKey: 'onbSubtitle1', bodyKey: 'onbBody1', art: 'logo' },
-  { titleKey: 'onbTitle2', subtitleKey: 'onbBody2', showOffer: true, art: 'gift' },
+  { titleKey: 'onbTitle2', subtitleKey: 'onbBody2', art: 'gift' },
   {
     titleKey: 'onbTitle3',
     subtitleKey: 'onbBody3',
@@ -34,18 +32,11 @@ const SLIDES: readonly Slide[] = [
   },
 ]
 
-/** render `**emphasized**` segments of a localized string as <strong> */
-function renderEmphasis(text: string) {
-  return text
-    .split('**')
-    .map((part, i) => (i % 2 === 1 ? <strong key={part}>{part}</strong> : part))
-}
-
 /* exact vectors from the design spec:
  * 60px canvas, 4px strokes — same visual mass as the 60px app icon */
 function SlideArt({ kind }: { kind: Slide['art'] }) {
   if (kind === 'logo') {
-    return <img className="onb-art onb-art-logo" src={appIcon} alt="" />
+    return <BrandLogo className="onb-art onb-art-logo" variant="blue" alt="Captivela" />
   }
   if (kind === 'gift') {
     // hand-drawn gift kept over the spec vector deliberately; 48 canvas at
@@ -104,9 +95,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
     cardRef.current?.focus()
   }, [])
 
-  // slide changes can strip focus from the active control (leaving slide 2
-  // makes its GenTeam button inert, which blurs it) — pull focus back onto the
-  // card so it never drops to body
+  // Pull focus back onto the card after slide changes so it never drops to body.
   useEffect(() => {
     const card = cardRef.current
     const active = document.activeElement
@@ -176,23 +165,6 @@ export function Onboarding({ onDone }: OnboardingProps) {
               <p className="onb-subtitle">{t(s.subtitleKey)}</p>
               {s.bodyKey && (
                 <p className={`onb-body${s.bodyDim ? ' onb-body-dim' : ''}`}>{t(s.bodyKey)}</p>
-              )}
-              {s.showOffer && (
-                <div className="onb-offer">
-                  <p className="onb-credits">{renderEmphasis(t('onbCredits'))}</p>
-                  <button className="onb-join" onClick={() => void window.aiOffice.openGenTeam()}>
-                    {t('onbJoinGenTeam')}
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                      <path
-                        d="M3.5 8.5 8.5 3.5M4.5 3.5h4v4"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
               )}
             </div>
           ))}

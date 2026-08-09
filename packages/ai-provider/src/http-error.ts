@@ -1,7 +1,7 @@
 /**
  * Detail text for a non-OK HTTP response body. Real API errors (JSON/plain
  * text) are surfaced as-is, truncated. HTML bodies — an edge/WAF block page or
- * a login page served instead of an API response (e.g. Genspark's SPA shell on
+ * a login page served instead of an API response (e.g. hosted service's SPA shell on
  * a 403) — are replaced with a short readable note, since dumping raw markup
  * into the chat UI is useless to the user.
  */

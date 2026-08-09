@@ -1,6 +1,6 @@
 {
   "name": "@genoffice/slides",
-  "productName": "GenOffice Slides",
+  "productName": "Captivela Slides",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
@@ -45,10 +45,10 @@
     "vite": "^7.3.1",
     "vitest": "^4.1.0"
   },
-  "author": "GenOffice",
+  "author": "Captivela Office",
   "build": {
     "appId": "com.genoffice.slides",
-    "productName": "GenOffice Slides",
+    "productName": "Captivela Slides",
     "electronVersion": "41.7.1",
     "directories": {
       "output": "release"

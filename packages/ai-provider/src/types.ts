@@ -18,7 +18,7 @@ export type AiProviderId =
   | 'litellm'
   | 'custom'
 
-/** Genspark account status (gsk login state; the sole auth source for AI features) */
+/** hosted service account status (gsk login state; the sole auth source for AI features) */
 export interface GenSparkAccountStatus {
   loggedIn: boolean
   email?: string

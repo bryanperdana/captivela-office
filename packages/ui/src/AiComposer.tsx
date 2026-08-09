@@ -41,11 +41,11 @@ export function AiComposer({
   readonly sendLabel: string
   readonly stopLabel: string
   readonly ariaLabel?: string | undefined
-  /** content inside the box above the textarea (attachment chips, …) — Genspark composer style */
+  /** content inside the box above the textarea (attachment chips, …) — hosted service composer style */
   readonly header?: React.ReactNode
   /** extra controls at the left of the footer (attach button, toggles, …) */
   readonly footerStart?: React.ReactNode
-  /** compact variant: no hint text, icon-only enter/stop button (Genspark composer style) */
+  /** compact variant: no hint text, icon-only enter/stop button (hosted service composer style) */
   readonly iconOnly?: boolean | undefined
   /** custom art for the icon-only send button (e.g. brand-supplied PNGs); falls back to IconEnter */
   readonly sendIconEnabled?: React.ReactNode

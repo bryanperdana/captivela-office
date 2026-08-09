@@ -27,7 +27,7 @@ export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
   }
 
   return (
-    <div className="app-frame">
+    <div className="app-frame captivela-app-chrome" data-captivela-theme="light">
       <TabBar />
       {/* docs/sheets tabs render as WebContentsView children of this window, positioned
        * by the main process to cover this area — only Home paints its own content here. */}

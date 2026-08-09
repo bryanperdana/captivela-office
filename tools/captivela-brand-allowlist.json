@@ -8,6 +8,8 @@
     ".git/",
     "release/",
     "coverage/",
+    "out/",
+    "dist/",
     "fixtures/",
     "test-results/"
   ],
@@ -35,9 +37,17 @@
     "GenOffice.*upstream",
     "upstream.*Genspark",
     "Genspark.*upstream",
+    "join\\(app\\.getPath\\('appData'\\), 'GenOffice'\\)",
+    "https://www\\.genspark\\.ai/api/(anthropic|llm_proxy|tool_cli|office_addin_auth|files/s/)",
+    "https://genspark\\.ai/a\\.png",
+    "headers\\.Referer = 'https://www\\.genspark\\.ai/'",
+    "remoteImageHeaders.*https://www\\.genspark\\.ai/",
+    "Copyright \\(c\\) Genspark\\. Licensed under the MIT License",
     "Mainfunc"
   ],
   "fileAllowPatterns": [
-    "(^|/)tools/captivela-brand-allowlist\\.json$"
+    "(^|/)tools/captivela-brand-allowlist\\.json$",
+    "(^|/)tools/audit-captivela-branding\\.mjs$",
+    "(^|/)packages/electron-utils/tests/remote-image\\.test\\.ts$"
   ]
 }

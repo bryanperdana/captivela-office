@@ -285,7 +285,7 @@ button {
   box-shadow: 0 2px 6px rgba(74, 92, 255, 0.25);
 }
 
-/* Genspark brand logo (Ribbon AI button and AI panel title) */
+/* hosted service brand logo (Ribbon AI button and AI panel title) */
 .genspark-badge {
   display: block;
   width: 22px;
@@ -458,7 +458,7 @@ button {
   background: var(--active-bg);
 }
 
-/* The Genspark AI entry keeps a black label even while the panel is open. */
+/* The hosted service AI entry keeps a black label even while the panel is open. */
 .rb-big.ai-entry.active {
   color: var(--text);
 }
@@ -474,7 +474,7 @@ button {
   background: var(--hover);
 }
 
-/* Neutral gray, not the Word-blue --active-bg: the Genspark entry is the same
+/* Neutral gray, not the Word-blue --active-bg: the hosted service entry is the same
    control across docs/sheets/slides, so its open state matches their ribbons. */
 .rb-big.ai-entry.active {
   background: #ebebeb;
@@ -945,7 +945,7 @@ button {
 }
 
 /* line spacing dropdown */
-/* Home-tab Genspark AI entry: black circular "+" badge with a dropdown caret,
+/* Home-tab hosted service AI entry: black circular "+" badge with a dropdown caret,
    brand label below (mirrors the sheets Home ribbon). */
 /* AI feature buttons next to the entry: purple glyphs, label below */
 .ai-feature-icon {
@@ -4027,7 +4027,7 @@ body.docs-crop-active
   display: flex;
   flex-direction: column;
   background: var(--color-bg-page);
-  /* Same visible divider as the GenOffice Sheets panel: the editor canvas is gray, so the default border would drown */
+  /* Same visible divider as the Captivela Office Sheets panel: the editor canvas is gray, so the default border would drown */
   border-right: 1px solid var(--color-border-strong);
   font-family: var(--gs-font-sans);
   color: var(--color-text-primary);
@@ -5107,7 +5107,7 @@ body.docs-crop-active
 .ai-attachments {
   display: flex;
   gap: 8px;
-  /* single row inside the prompt box, above the textarea (Genspark composer style):
+  /* single row inside the prompt box, above the textarea (hosted service composer style):
      extra images run past the box edge and scroll horizontally.
      scroll (not auto) + zero bottom padding: the always-present 4px scrollbar lane
      doubles as the bottom padding, so overflowing never grows the strip and
@@ -5211,7 +5211,7 @@ body.docs-crop-active
   background: #fafafa;
 }
 
-/* the type icon sits in its own bordered white tile, like the Genspark card */
+/* the type icon sits in its own bordered white tile, like the hosted service card */
 .ai-attachment-card-icon {
   display: flex;
   flex-shrink: 0;

@@ -1,7 +1,7 @@
 import type { AiProviderId, AiProviderMeta, AiSettings, LegacyAiSettings } from './types'
 
 /**
- * Genspark server-side LLM proxy endpoints. All three protocols share the
+ * hosted service server-side LLM proxy endpoints. All three protocols share the
  * api_key from the gsk login; model ids follow the proxy's own naming scheme,
  * which differs from the official vendor ids.
  */
@@ -12,9 +12,9 @@ export const GENSPARK_LLM_BASE_URLS = {
 } as const
 
 /**
- * Splits GenOffice usage out of the proxy's default "Claw" billing bucket
+ * Splits Captivela Office usage out of the proxy's default "Claw" billing bucket
  * (the backend attributes gsk-key traffic by X-Agent-Type). Only sent to the
- * Genspark proxy — never to direct vendor APIs.
+ * hosted service proxy — never to direct vendor APIs.
  */
 export const GENSPARK_AGENT_TYPE = 'genoffice'
 
@@ -28,9 +28,15 @@ export function gensparkAttributionHeaders(baseUrl?: string): Record<string, str
  * Ordered, BYOK-only preset list surfaced in the Settings UI's provider picker.
  * 'genspark' | 'anthropic' | 'gemini' | 'deepseek' remain wired below (routing,
  * gsk login) as native/legacy providers but are intentionally excluded from
- * this list so the default BYOK experience never requires a Genspark account.
+ * this list so the default BYOK experience never requires a hosted service account.
  */
-export const BYOK_PRESET_IDS: AiProviderId[] = ['openai', 'openrouter', 'ollama', 'litellm', 'custom']
+export const BYOK_PRESET_IDS: AiProviderId[] = [
+  'openai',
+  'openrouter',
+  'ollama',
+  'litellm',
+  'custom',
+]
 
 export const AI_PROVIDERS: AiProviderMeta[] = [
   {
@@ -86,7 +92,7 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
   },
   {
     id: 'genspark',
-    label: 'Genspark',
+    label: 'hosted service',
     models: [
       'claude-opus-4-7',
       'claude-opus-4-8',
@@ -97,7 +103,7 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
       'gemini-3-flash-preview',
     ],
     defaultModel: 'claude-opus-4-7',
-    keyPlaceholder: 'Not required - sign in to Genspark',
+    keyPlaceholder: 'Not required - sign in to hosted service',
   },
   {
     id: 'anthropic',
@@ -142,7 +148,7 @@ export const PROVIDER_META_BY_ID: ReadonlyMap<AiProviderId, AiProviderMeta> = ne
  * except providers listed in `defaultApiKeys` (e.g. an app-specific
  * preconfigured Anthropic key). Callers own that policy; this package
  * has no hardcoded keys. Defaults to the 'openai' BYOK preset — no
- * provider requires a Genspark account to work.
+ * provider requires a hosted service account to work.
  */
 export function defaultAiSettings(
   defaultApiKeys?: Partial<Record<AiProviderId, string>>,

@@ -84,8 +84,8 @@ export function registerAiIpc(): void {
   // an "is a key stored" flag per provider.
   ipcMain.handle('ai:get-settings', (): AiSettings => getSettingsForRenderer(getAiSettingsStore()))
 
-  // Genspark account: reports signed-out in the BYOK build, so nothing can gate
-  // an AI feature on a Genspark login
+  // hosted service account: reports signed-out in the BYOK build, so nothing can gate
+  // an AI feature on a hosted service login
   ipcMain.handle(
     'ai:gsk-status',
     async (_event, withEmail?: boolean): Promise<GenSparkAccountStatus> => {
@@ -211,7 +211,7 @@ export function registerAiIpc(): void {
 // never called; docs does not have these channels, so putting them in the wrong place raises
 // "No handler registered".
 export function registerSlidesOnlyAiIpc(): void {
-  // gsk (Genspark CLI) capabilities: AI image generation / media analysis. Returns an error prompt when not logged in.
+  // gsk (hosted service CLI) capabilities: AI image generation / media analysis. Returns an error prompt when not logged in.
   ipcMain.handle(
     'ai:generate-image',
     async (
@@ -224,6 +224,8 @@ export function registerSlidesOnlyAiIpc(): void {
         imageSize?: string
       },
     ) => {
+      if (!GENSPARK_CLOUD_ENABLED)
+        return { error: 'Cloud image generation is unavailable in this build.' }
       if (!hasGskAuth()) return { error: tm('errGskCli') }
       try {
         const r = await gskGenerateImage({
@@ -245,6 +247,8 @@ export function registerSlidesOnlyAiIpc(): void {
   ipcMain.handle(
     'ai:analyze-media',
     async (_event, op: { mediaUrls: string[]; requirements: string }) => {
+      if (!GENSPARK_CLOUD_ENABLED)
+        return { error: 'Cloud media analysis is unavailable in this build.' }
       if (!hasGskAuth()) return { error: tm('errGskCli') }
       try {
         const text = await gskAnalyzeMedia({
