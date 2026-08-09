@@ -1,25 +1,18 @@
-/* First-run onboarding: full-window overlay above the home screen.
- * Layout follows the design spec: 540×420 white
- * card, left-aligned content column, slide-2 credits offer panel, and a
- * dots-left / Skip-Back-Next-right footer. hosted service tokens: black pill primary,
- * gray ramp, brand blue #0f7fff only on the credits line. */
+/* First-run onboarding: full-window Captivela application chrome. */
 
 .onb-overlay {
-  /* hosted service tokens, scoped to the overlay (home.css keeps its own --accent) */
-  --onb-font-sans:
-    'Arial', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    sans-serif;
-  --onb-btn-primary: #232425;
-  --onb-btn-primary-hover: #393a3b;
-  --onb-brand: #0f7fff;
-  --onb-text-primary: #232425;
-  --onb-text-secondary: #606366;
-  --onb-text-tertiary: #909499;
-  --onb-bg-subtle: #f6f7f8;
-  /* offer panel: a whisper of the brand blue instead of neutral gray */
-  --onb-bg-panel: #f0f7ff;
-  --onb-border-default: #eaeaea;
-  --onb-border-strong: #d0d3d8;
+  /* Onboarding is application chrome and uses the same locally packaged typeface. */
+  --onb-font-sans: var(--captivela-font-ui);
+  --onb-btn-primary: var(--captivela-blue);
+  --onb-btn-primary-hover: var(--captivela-blue-deep);
+  --onb-brand: var(--captivela-blue);
+  --onb-text-primary: var(--captivela-ink);
+  --onb-text-secondary: var(--captivela-slate);
+  --onb-text-tertiary: var(--captivela-muted);
+  --onb-bg-subtle: var(--captivela-paper);
+  --onb-bg-panel: rgba(0, 0, 241, 0.05);
+  --onb-border-default: var(--captivela-border-light);
+  --onb-border-strong: rgba(8, 8, 15, 0.24);
   --onb-transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
 
   position: fixed;
@@ -28,7 +21,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(35, 36, 37, 0.4);
+  background: rgba(8, 8, 15, 0.42);
   backdrop-filter: blur(4px);
   font-family: var(--onb-font-sans);
 }
@@ -45,11 +38,9 @@
   min-height: 420px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
-  border-radius: 20px;
-  background: #fff;
-  box-shadow:
-    0 24px 64px rgba(35, 36, 37, 0.22),
-    0 2px 8px rgba(35, 36, 37, 0.08);
+  border: 1px solid var(--onb-border-default);
+  border-radius: var(--captivela-radius-panel);
+  background: var(--captivela-paper);
   padding: 41px 32px 25px;
 }
 

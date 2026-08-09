@@ -48,6 +48,7 @@
   "fileAllowPatterns": [
     "(^|/)tools/captivela-brand-allowlist\\.json$",
     "(^|/)tools/audit-captivela-branding\\.mjs$",
+    "(^|/)tools/qa-packaged-captivela\\.mjs$",
     "(^|/)packages/electron-utils/tests/remote-image\\.test\\.ts$"
   ]
 }

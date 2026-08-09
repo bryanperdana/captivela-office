@@ -1,5 +1,7 @@
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { readProductEnvironment } from '@genoffice/electron-utils'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateInfo } from 'electron-updater'
@@ -330,6 +332,10 @@ export function initAutoUpdater(
   // — dmg is first-install only).
   if (!app.isPackaged) return
   if (process.platform !== 'win32' && process.platform !== 'darwin') return
+  // Local/internal packages intentionally omit publish config, so
+  // electron-builder does not create app-update.yml. Treat that absence as
+  // updater disabled instead of letting electron-updater emit ENOENT errors.
+  if (!process.resourcesPath || !existsSync(join(process.resourcesPath, 'app-update.yml'))) return
 
   updaterActive = true
   autoUpdater.channel = CHANNEL_FEED[initialChannel]

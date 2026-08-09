@@ -8,6 +8,11 @@ import type { UpdateUiState } from '../src/shared/update-api'
  */
 
 const appState = { isPackaged: true }
+const fsState = { updateConfigPresent: true }
+
+vi.mock('node:fs', () => ({
+  existsSync: () => fsState.updateConfigPresent,
+}))
 
 vi.mock('electron', () => ({
   app: {
@@ -118,6 +123,8 @@ beforeEach(() => {
   vi.resetModules()
   vi.useFakeTimers()
   appState.isPackaged = true
+  fsState.updateConfigPresent = true
+  Object.defineProperty(process, 'resourcesPath', { value: '/mock/resources', configurable: true })
   delete process.env.GENOFFICE_FAKE_UPDATE
   updaterState.listeners.clear()
   updaterState.autoDownload = true
@@ -156,6 +163,15 @@ describe('initAutoUpdater', () => {
   it('does nothing on unsupported platforms', async () => {
     platformSpy?.restore()
     setPlatform('linux')
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS)
+    expect(updaterState.listeners.size).toBe(0)
+    expect(checkForUpdates).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when a local package has no update feed config', async () => {
+    fsState.updateConfigPresent = false
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS)
