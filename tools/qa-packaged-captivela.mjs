@@ -96,6 +96,12 @@ if (await newDocument.count()) {
         bodyText: text.slice(0, 3000),
         forbidden: ['GenOffice', 'Genspark', 'GenTeam'].filter((term) => text.includes(term)),
         chrome: Boolean(document.querySelector('.captivela-app-chrome')),
+        chromeFont: getComputedStyle(
+          document.querySelector('.ribbon-tabs') ?? document.querySelector('.captivela-app-chrome'),
+        ).fontFamily,
+        documentFont: document.querySelector('.doc-page')
+          ? getComputedStyle(document.querySelector('.doc-page')).fontFamily
+          : null,
       }
     })
     await modulePage.screenshot({ path: resolve(output, '03-docs.png'), fullPage: true })

@@ -1829,7 +1829,7 @@ export default function App() {
 
   if (status === 'password') {
     return (
-      <div className="app">
+      <div className="app captivela-app-chrome">
         <div className="pdf-placeholder">
           <form
             className="pdf-password"
@@ -1861,7 +1861,7 @@ export default function App() {
 
   if (status !== 'ready' || !doc) {
     return (
-      <div className="app">
+      <div className="app captivela-app-chrome">
         <div className="pdf-placeholder">
           {status === 'loading' ? t('loading') : status === 'error' ? t('loadError') : t('noFile')}
         </div>
@@ -1872,7 +1872,7 @@ export default function App() {
   const menuOrig = thumbMenu?.origIdx ?? -1
 
   return (
-    <div className="app">
+    <div className="app captivela-app-chrome">
       <div className="ribbon">
         <div className="ribbon-tabs">
           <button
