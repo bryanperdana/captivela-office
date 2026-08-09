@@ -79,8 +79,8 @@ const config = {
       from: '../pdf/out',
       to: 'modules/pdf',
     },
-    // The upstream build also shipped the Genspark `gsk` CLI tree here. The
-    // BYOK build never signs in to Genspark (see GENSPARK_CLOUD_ENABLED), so
+    // The upstream build also shipped its hosted-service CLI tree here. The
+    // BYOK build keeps hosted-service capabilities disabled, so
     // the CLI and its hoisting preflight are gone: nothing in the package
     // would run it.
   ],
