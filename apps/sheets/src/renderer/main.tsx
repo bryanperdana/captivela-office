@@ -1,5 +1,6 @@
 import ReactDOM from 'react-dom/client'
 import { htmlLang, type Lang } from '@genoffice/i18n'
+import '@genoffice/ui/brand.css'
 
 import '@univerjs/preset-sheets-core/lib/index.css'
 

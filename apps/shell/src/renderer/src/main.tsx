@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { htmlLang } from '@genoffice/i18n'
+import '@genoffice/ui/brand.css'
 import { AppFrame } from './AppFrame'
 import { LocaleProvider } from './locale'
 import './home.css'

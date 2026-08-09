@@ -276,6 +276,11 @@ if (crates === null) {
 /** Bundled fonts (for docs rendering; all metric-compatible replacements for Microsoft fonts) */
 const FONTS = [
   [
+    'Geist / Geist Mono (Fontsource variable subsets) 5.3.0',
+    'SIL OFL 1.1',
+    'Copyright 2023 The Geist Project Authors. Latin and Latin Extended WOFF2 subsets are bundled for Captivela application chrome.',
+  ],
+  [
     'Liberation Sans / Serif / Mono 2.1.5',
     'SIL OFL 1.1',
     'Digitized data © 2010 Google Corporation with Reserved Font Names Arimo, Tinos and Cousine.\n© 2012 Red Hat, Inc. with Reserved Font Name Liberation.',
