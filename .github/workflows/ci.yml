@@ -76,6 +76,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Captivela branding audit
+        run: npm run audit:brand
+
       - name: Typecheck
         run: npm run typecheck
 

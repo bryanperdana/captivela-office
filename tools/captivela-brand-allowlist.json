@@ -1,0 +1,43 @@
+{
+  "pathExclusions": [
+    "LICENSE",
+    "NOTICE",
+    "MODIFICATIONS.md",
+    "THIRD-PARTY-NOTICES.txt",
+    "node_modules/",
+    ".git/",
+    "release/",
+    "coverage/",
+    "fixtures/",
+    "test-results/"
+  ],
+  "lineAllowPatterns": [
+    "@genoffice/",
+    "github\\.com/genspark-ai/genoffice",
+    "GENSPARK_CLOUD_ENABLED",
+    "ensureGenofficeLogin",
+    "startGenofficeLogin",
+    "loadGenofficeAuth",
+    "genofficeLogout",
+    "GenofficeAuth",
+    "genoffice-auth",
+    "genoffice-login",
+    "genoffice_logout",
+    "genoffice_login",
+    "legacy.*GenOffice",
+    "GenOffice.*legacy",
+    "legacy.*GENOFFICE_",
+    "GENOFFICE_.*legacy",
+    "migration.*GenOffice",
+    "GenOffice.*migration",
+    "compatibility alias",
+    "upstream.*GenOffice",
+    "GenOffice.*upstream",
+    "upstream.*Genspark",
+    "Genspark.*upstream",
+    "Mainfunc"
+  ],
+  "fileAllowPatterns": [
+    "(^|/)tools/captivela-brand-allowlist\\.json$"
+  ]
+}
