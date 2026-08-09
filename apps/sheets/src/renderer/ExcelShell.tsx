@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { IconAiMark } from '@genoffice/ui'
 
 import {
   CaretIcon,
-  GensparkMark,
   RIBBON_GLYPH_ICONS,
   RedoIcon,
   SaveIcon,
@@ -19,6 +19,7 @@ import { type SelectionFormat } from './selection-format'
 import type { ChartSeriesVisualState } from '../domain/chart-visual'
 import type { ChangePlan } from '../domain/workbook.types'
 import type { AttachmentMeta } from '../shared/desktop-api'
+import type { AiSettings } from '@genoffice/ai-provider'
 import { AiChatPanel, type AiChatMessage } from './ai/AiChatPanel'
 import {
   PivotDialog,
@@ -142,6 +143,8 @@ interface ExcelShellProps {
   readonly onStop: () => void
   readonly onNewChat: () => void
   readonly onUndo: () => void
+  /// The AI panel's settings dialog saved; App refreshes its own settings copy.
+  readonly onAiSettingsChanged: (settings: AiSettings) => void
   readonly onCommand: (command: string) => void
   /// Left side of the status bar (ready / streaming / AI progress messages).
   readonly statusMessage: string
@@ -255,6 +258,7 @@ export function ExcelShell({
   onStop,
   onNewChat,
   onUndo,
+  onAiSettingsChanged,
   onCommand,
   statusMessage,
   zoomPercent,
@@ -436,6 +440,7 @@ export function ExcelShell({
           onStop={onStop}
           onNewChat={onNewChat}
           onUndo={onUndo}
+          onSettingsChanged={onAiSettingsChanged}
           onExpand={() => setIsCopilotOpen(true)}
           onCollapse={() => setIsCopilotOpen(false)}
         />
@@ -2059,10 +2064,10 @@ function Ribbon({
           onClick={onAiToggle}
         >
           <span className="tool-icon-row">
-            <GensparkMark size={26} />
+            <IconAiMark size={26} />
           </span>
           <span>
-            <strong>Genspark AI</strong>
+            <strong>AI</strong>
           </span>
         </button>
         <button

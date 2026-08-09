@@ -23,7 +23,7 @@ import {
   type ThemeFonts,
 } from '@genoffice/docx-engine'
 import type { AiSettings, OpenFileResult } from '../shared/ipc'
-import { AI_PROVIDERS } from '../shared/ipc'
+import { defaultAiSettings } from '@genoffice/ai-provider'
 import { AiPanel } from './ai/AiPanel'
 import { asianCharCount, countWords, nonAsianWordCount } from './word-count'
 import { toRoman } from './note-format'
@@ -254,15 +254,12 @@ interface DocStats {
   lines: number
 }
 
-const DEFAULT_SETTINGS: AiSettings = {
-  provider: 'anthropic',
-  providers: Object.fromEntries(
-    AI_PROVIDERS.map((p) => [
-      p.id,
-      { apiKey: '', model: p.defaultModel, baseUrl: p.needsBaseUrl ? '' : undefined },
-    ]),
-  ) as AiSettings['providers'],
-}
+/**
+ * Placeholder until `ai:get-settings` answers. It is the same BYOK default the
+ * main process computes (the 'openai' preset, no key), so the panel never
+ * briefly reflects a provider the user has not configured.
+ */
+const DEFAULT_SETTINGS: AiSettings = defaultAiSettings()
 
 export function App() {
   // subscribe to language switches for re-render; strings all go through module-level t, so memoized callbacks never capture stale closures
@@ -2550,6 +2547,7 @@ export function App() {
               onExpand={() => setShowAi(true)}
               onCollapse={() => setShowAi(false)}
               filePath={doc?.filePath ?? null}
+              onSettingsChanged={setSettings}
             />
           </div>
         )}

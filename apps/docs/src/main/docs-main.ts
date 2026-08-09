@@ -10,15 +10,33 @@ import {
 } from 'node:fs'
 import { copyFile, mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { BrowserWindow, Menu, WebContentsView, app, dialog, ipcMain, shell } from 'electron'
+import {
+  BrowserWindow,
+  Menu,
+  WebContentsView,
+  app,
+  dialog,
+  ipcMain,
+  safeStorage,
+  shell,
+} from 'electron'
 import {
   appMenuLabels,
+  clearApiKeyFromRenderer,
   contextMenuLabels,
+  createAiSettingsStore,
   fetchRemoteImage,
+  getSettingsForRenderer,
   installContextMenu,
   installNavigationGuard,
+  redactRequestError,
+  resolveRequestConfig,
+  runConnectionCheck,
+  runToolCallingCheck,
   safeExternalUrl,
+  setSettingsFromRenderer,
   windowMenuTemplate,
+  type AiSettingsStore,
 } from '@genoffice/electron-utils'
 import { createI18n, getUiLang, normalizeLang, setUiLang } from '@genoffice/i18n'
 import { ProjectStore } from '@genoffice/project-store'
@@ -33,16 +51,15 @@ import { parseFileToText } from '@genoffice/file-parse'
 import {
   AiCreditsError,
   AiTimeoutError,
+  GENSPARK_CLOUD_ENABLED,
   chatForProvider,
-  defaultAiSettings,
-  resolveAiSettings,
   streamForProvider,
   type AiChatRequest,
+  type AiCheckRequest,
   type AiSettings,
   type AiStreamChunk,
   type AiStreamRequest,
   type GenSparkAccountStatus,
-  type LegacyAiSettings,
 } from '@genoffice/ai-provider'
 import {
   ensureGenofficeLogin,
@@ -2466,7 +2483,39 @@ const TWIPS_PER_INCH = 1440
 
 const SETTINGS_PATH = () => userDataPath('ai-settings.json')
 
+/**
+ * Lazily created because `app.getPath('userData')` is only valid once Electron
+ * is ready. Shared by every ai:* handler below, so the app has exactly one
+ * reader/writer of ai-settings.json and ai-secrets.json.
+ */
+let aiSettingsStore: AiSettingsStore | null = null
+
+export function getAiSettingsStore(): AiSettingsStore {
+  if (!aiSettingsStore) {
+    aiSettingsStore = createAiSettingsStore({
+      settingsPath: SETTINGS_PATH(),
+      // safeStorage is Keychain-backed on macOS, DPAPI on Windows, and reports
+      // unavailable where no OS keystore exists (the store then falls back to a
+      // 0600 secrets file — still never inside ai-settings.json)
+      cipher: safeStorage,
+    })
+  }
+  return aiSettingsStore
+}
+
 const activeAiStreams = new Map<string, AbortController>()
+
+/**
+ * Genspark account state. With `GENSPARK_CLOUD_ENABLED` off (the BYOK build)
+ * this always reports signed-out, so no surface can gate an AI feature on a
+ * Genspark login.
+ */
+async function gensparkAccountStatus(withEmail?: boolean): Promise<GenSparkAccountStatus> {
+  if (!GENSPARK_CLOUD_ENABLED || !hasGskAuth()) return { loggedIn: false }
+  if (!withEmail) return { loggedIn: true }
+  const info = await gskLoginInfo()
+  return info?.email ? { loggedIn: true, email: info.email } : { loggedIn: true }
+}
 
 /**
  * AI settings + chat/stream proxy handlers. Split out so the shell can
@@ -2474,58 +2523,61 @@ const activeAiStreams = new Map<string, AbortController>()
  * sheets' standalone AI handlers use the same channel names.
  */
 export function registerAiIpc(): void {
-  ipcMain.handle('ai:get-settings', (): AiSettings => {
-    const stored = readJson<Partial<AiSettings> & LegacyAiSettings>(SETTINGS_PATH(), {})
-    const settings = resolveAiSettings(stored, defaultAiSettings())
-    // AI features all go through Genspark (gsk login); legacy settings with another provider are reset
-    settings.provider = 'genspark'
-    return settings
-  })
+  // BYOK: the stored provider choice is returned as-is (fresh installs default
+  // to the 'openai' preset) and API keys are stripped — the renderer gets only
+  // an "is a key stored" flag per provider.
+  ipcMain.handle('ai:get-settings', (): AiSettings => getSettingsForRenderer(getAiSettingsStore()))
 
-  // Genspark account (gsk login state): auth source for AI features; the frontend uses it to prompt login when logged out
-  ipcMain.handle(
-    'ai:gsk-status',
-    async (_event, withEmail?: boolean): Promise<GenSparkAccountStatus> => {
-      if (!hasGskAuth()) return { loggedIn: false }
-      if (!withEmail) return { loggedIn: true }
-      const info = await gskLoginInfo()
-      return info?.email ? { loggedIn: true, email: info.email } : { loggedIn: true }
-    },
-  )
+  ipcMain.handle('ai:gsk-status', (_event, withEmail?: boolean) => gensparkAccountStatus(withEmail))
 
   ipcMain.handle('ai:gsk-login', () => {
+    if (!GENSPARK_CLOUD_ENABLED) return
     ensureGenofficeLogin((url) => void shell.openExternal(url))
   })
 
-  ipcMain.handle('ai:set-settings', (_event, settings: AiSettings) => {
-    writeJson(SETTINGS_PATH(), settings)
-  })
+  // validated at the IPC boundary; the key goes to safeStorage, the rest to JSON
+  ipcMain.handle('ai:set-settings', (_event, settings: unknown) =>
+    setSettingsFromRenderer(getAiSettingsStore(), settings),
+  )
+
+  ipcMain.handle('ai:clear-api-key', (_event, provider: unknown) =>
+    clearApiKeyFromRenderer(getAiSettingsStore(), provider),
+  )
+
+  ipcMain.handle('ai:test-connection', (_event, request: AiCheckRequest) =>
+    runConnectionCheck(getAiSettingsStore(), request ?? {}),
+  )
+
+  ipcMain.handle('ai:test-tool-calling', (_event, request: AiCheckRequest) =>
+    runToolCallingCheck(getAiSettingsStore(), request ?? {}),
+  )
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
-    const { requestId, settings, system, messages } = request
+    const { requestId, system, messages } = request
     const tools = request.tools ?? []
     const maxTokens = request.maxTokens ?? 8192
-    const provider = settings.provider
-    let config = settings.providers?.[provider]
-    // the genspark key never enters the settings file; requests take it from the gsk login state
-    if (provider === 'genspark' && config && !config.apiKey) {
-      config = { ...config, apiKey: gskApiKey() }
-    }
     const send = (chunk: AiStreamChunk) => {
       if (!event.sender.isDestroyed()) event.sender.send('ai:stream-chunk', chunk)
     }
-    if (!config?.apiKey) {
+    // the API key never travels through the renderer: it is read from secure
+    // storage here (or, for genspark, from the gsk login state)
+    const resolved = resolveRequestConfig(getAiSettingsStore(), request.settings, (p) =>
+      p === 'genspark' && GENSPARK_CLOUD_ENABLED ? gskApiKey() : '',
+    )
+    if (!resolved.ok) {
       send({
         requestId,
         type: 'error',
-        error: provider === 'genspark' ? tm('errGskNotLoggedIn') : tm('errNoApiKey', { provider }),
+        error:
+          resolved.kind === 'model'
+            ? tm('errNoModel')
+            : request.settings?.provider === 'genspark'
+              ? tm('errGskNotLoggedIn')
+              : resolved.error,
       })
       return
     }
-    if (!config.model) {
-      send({ requestId, type: 'error', error: tm('errNoModel') })
-      return
-    }
+    const { provider, config } = resolved
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
@@ -2555,7 +2607,7 @@ export function registerAiIpc(): void {
         send({
           requestId,
           type: 'error',
-          error: err instanceof Error ? err.message : String(err),
+          error: redactRequestError(err instanceof Error ? err.message : String(err), config),
           ...(err instanceof AiTimeoutError
             ? { errorCode: 'timeout' as const }
             : err instanceof AiCreditsError
@@ -2614,23 +2666,25 @@ export function registerAiIpc(): void {
   )
 
   ipcMain.handle('ai:chat', async (_event, request: AiChatRequest) => {
-    const { settings, system, user } = request
-    const provider = settings.provider
-    let config = settings.providers?.[provider]
-    if (provider === 'genspark' && config && !config.apiKey) {
-      config = { ...config, apiKey: gskApiKey() }
-    }
-    if (!config?.apiKey) {
+    const { system, user } = request
+    const resolved = resolveRequestConfig(getAiSettingsStore(), request.settings, (p) =>
+      p === 'genspark' && GENSPARK_CLOUD_ENABLED ? gskApiKey() : '',
+    )
+    if (!resolved.ok) {
       return {
         ok: false,
-        error: provider === 'genspark' ? tm('errGskNotLoggedIn') : tm('errNoApiKey', { provider }),
+        error:
+          resolved.kind === 'model'
+            ? tm('errNoModel')
+            : request.settings?.provider === 'genspark'
+              ? tm('errGskNotLoggedIn')
+              : resolved.error,
       }
     }
-    if (!config.model) return { ok: false, error: tm('errNoModel') }
     try {
-      return await chatForProvider(provider, config, system, user)
+      return await chatForProvider(resolved.provider, resolved.config, system, user)
     } catch (err) {
-      return { ok: false, error: String(err) }
+      return { ok: false, error: redactRequestError(String(err), resolved.config) }
     }
   })
 }

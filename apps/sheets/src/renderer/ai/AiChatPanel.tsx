@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { AiComposer, AiTypingIndicator } from '@genoffice/ui'
-import { GensparkMark } from '../ribbon-icons'
+import {
+  AiComposer,
+  AiSettingsDialog,
+  AiTypingIndicator,
+  IconAiMark,
+  IconAiSettings,
+  aiSettingsLabel,
+} from '@genoffice/ui'
+import { GENSPARK_CLOUD_ENABLED, type AiSettings } from '@genoffice/ai-provider'
 import type { ChangePlan } from '../../domain/workbook.types'
 import { ATTACHMENT_IMAGE_EXTS, type AttachmentMeta } from '../../shared/desktop-api'
 import { useI18n, type TFunc } from '../i18n/locale'
@@ -167,6 +174,7 @@ export function AiChatPanel({
   onUndo,
   onExpand,
   onCollapse,
+  onSettingsChanged,
 }: {
   readonly isOpen: boolean
   /** the workbook has cells with content — empty workbooks get "build me a sheet" copy instead */
@@ -194,8 +202,11 @@ export function AiChatPanel({
   readonly onUndo: () => void
   readonly onExpand: () => void
   readonly onCollapse: () => void
+  /// The settings dialog saved: hand the reloaded settings back to App's state.
+  readonly onSettingsChanged?: ((settings: AiSettings) => void) | undefined
 }): React.JSX.Element {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const chatRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const stickToBottomRef = useRef(true)
@@ -328,7 +339,7 @@ export function AiChatPanel({
     return (
       <aside className="copilot collapsed">
         <button className="expand-copilot" onClick={onExpand} title={t('aiOpenAssistant')}>
-          <GensparkMark size={22} />
+          <IconAiMark size={22} />
         </button>
       </aside>
     )
@@ -389,12 +400,12 @@ export function AiChatPanel({
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark"
+        aria-label="AI"
       />
       <header className="ai-panel-header">
         <span className="ai-panel-title">
-          <GensparkMark size={22} />
-          Genspark
+          <IconAiMark size={22} />
+          AI
         </span>
         <div className="ai-panel-header-actions">
           {(chat.length > 0 || historicChat.length > 0) && (
@@ -402,6 +413,14 @@ export function AiChatPanel({
               <IconNewChat size={15} />
             </button>
           )}
+          <button
+            className="ai-header-btn"
+            onClick={() => setSettingsOpen(true)}
+            title={aiSettingsLabel(lang)}
+            aria-label={aiSettingsLabel(lang)}
+          >
+            <IconAiSettings size={15} />
+          </button>
           <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapsePanel')}>
             <IconCollapse size={15} />
           </button>
@@ -474,7 +493,7 @@ export function AiChatPanel({
                     </button>
                   </div>
                 )}
-                {entry.loginRequired && (
+                {entry.loginRequired && GENSPARK_CLOUD_ENABLED && (
                   <button
                     className="ai-login-btn"
                     onClick={() => void window.desktopApi.aiGskLogin()}
@@ -639,6 +658,15 @@ export function AiChatPanel({
           onPasteFiles={onPasteFiles}
         />
       </div>
+      {settingsOpen && (
+        <AiSettingsDialog
+          api={window.desktopApi}
+          surface="sheets"
+          labels={{ title: aiSettingsLabel(lang) }}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(next) => onSettingsChanged?.(next)}
+        />
+      )}
     </aside>
   )
 }

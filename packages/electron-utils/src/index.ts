@@ -21,3 +21,15 @@ export {
   type FetchWithSsrfGuardOptions,
 } from './safe-remote-url'
 export { fetchRemoteImage, remoteImageHeaders } from './remote-image'
+export { createAiSettingsStore } from './ai-settings-store'
+export type { AiSettingsStore, AiSettingsStoreOptions, SecretCipher } from './ai-settings-store'
+export {
+  clearApiKeyFromRenderer,
+  getSettingsForRenderer,
+  redactRequestError,
+  resolveRequestConfig,
+  runConnectionCheck,
+  runToolCallingCheck,
+  setSettingsFromRenderer,
+} from './ai-ipc-core'
+export type { IpcResult } from './ai-ipc-core'

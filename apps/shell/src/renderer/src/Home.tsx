@@ -11,6 +11,7 @@ import type {
   ProjectSummaryEntry,
   RecentEntry,
 } from '../../shared/home-api'
+import { GENSPARK_CLOUD_ENABLED, PRODUCT_NAME } from '@genoffice/ai-provider'
 import { fileCountKey, visiblePageCount } from './counts'
 import { useI18n } from './locale'
 import type { I18n, StringKey } from './locale'
@@ -526,7 +527,13 @@ function AccountEntry() {
 
   const loggedIn = status?.loggedIn ?? false
   const email = status?.email ?? ''
-  const initial = email ? email[0].toUpperCase() : loggedIn ? 'G' : '?'
+  const initial = !GENSPARK_CLOUD_ENABLED
+    ? PRODUCT_NAME[0]
+    : email
+      ? email[0].toUpperCase()
+      : loggedIn
+        ? 'G'
+        : '?'
   const errorText = loginError
     ? {
         timeout: t('loginTimeout'),
@@ -653,7 +660,9 @@ function AccountEntry() {
     <div className="account-entry">
       {menuOpen && (
         <div className="account-menu" role="menu">
-          {loggedIn ? (
+          {/* The BYOK build has no cloud account: the entry is the preferences
+              menu only (language, version), with no sign-in affordance. */}
+          {!GENSPARK_CLOUD_ENABLED ? null : loggedIn ? (
             <div className="account-menu-info">
               <span className="account-menu-email" title={email}>
                 {email || t('loggedIn')}
@@ -916,13 +925,15 @@ function AccountEntry() {
         onClick={handleClick}
         aria-expanded={menuOpen}
         title={
-          loggedIn
-            ? email || t('loggedInGenspark')
-            : waiting
-              ? t('waitingLogin')
-              : (errorText ?? t('loginGenspark'))
+          !GENSPARK_CLOUD_ENABLED
+            ? PRODUCT_NAME
+            : loggedIn
+              ? email || t('loggedInGenspark')
+              : waiting
+                ? t('waitingLogin')
+                : (errorText ?? t('loginGenspark'))
         }
-        aria-label={loggedIn ? t('account') : t('login')}
+        aria-label={!GENSPARK_CLOUD_ENABLED ? PRODUCT_NAME : loggedIn ? t('account') : t('login')}
       >
         <span
           className={`account-avatar${loggedIn ? ' logged-in' : ''}${waiting ? ' waiting' : ''}`}
@@ -952,7 +963,9 @@ function AccountEntry() {
           )}
         </span>
         <span className="account-text">
-          {loggedIn ? (
+          {!GENSPARK_CLOUD_ENABLED ? (
+            <span className="account-name">{PRODUCT_NAME}</span>
+          ) : loggedIn ? (
             <>
               <span className="account-name">{email ? email.split('@')[0] : t('loggedIn')}</span>
               <span className="account-sub" title={email}>

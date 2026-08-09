@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 import type {
   AiChatResponse,
+  AiCheckResult,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   GenSparkAccountStatus,
 } from '@genoffice/ai-provider'
@@ -216,7 +218,26 @@ const desktopApi: DesktopApi = {
     return result as unknown as AiSettings
   },
   async setAiSettings(settings) {
-    await ipcRenderer.invoke(IPC_CHANNELS.aiSetSettings, settings)
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.aiSetSettings, settings)
+    return isRecord(result) ? (result as unknown as AiSettingsSaveResult) : { ok: true }
+  },
+  async clearAiApiKey(provider) {
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.aiClearApiKey, provider)
+    return isRecord(result) ? (result as unknown as AiSettingsSaveResult) : { ok: true }
+  },
+  async testAiConnection(request) {
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.aiTestConnection, request ?? {})
+    if (!isRecord(result) || typeof result.ok !== 'boolean') {
+      throw new Error('Invalid AI connection-test response.')
+    }
+    return result as unknown as AiCheckResult
+  },
+  async testAiToolCalling(request) {
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.aiTestToolCalling, request ?? {})
+    if (!isRecord(result) || typeof result.ok !== 'boolean') {
+      throw new Error('Invalid AI tool-calling-test response.')
+    }
+    return result as unknown as AiCheckResult
   },
   async aiChat(request) {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.aiChat, request)

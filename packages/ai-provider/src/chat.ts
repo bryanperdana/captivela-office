@@ -115,9 +115,17 @@ async function chatOpenAiCompatible(
   return { ok: true, content }
 }
 
-const OPENAI_COMPATIBLE_BASE_URLS: Partial<Record<AiProviderId, string>> = {
+/**
+ * Built-in fallback base URLs for OpenAI-compatible presets, used only when
+ * the user hasn't overridden `config.baseUrl` (every BYOK preset's base URL
+ * is user-editable — see AI_PROVIDERS' `defaultBaseUrl` in ./providers).
+ */
+const OPENAI_COMPATIBLE_DEFAULT_BASE_URLS: Partial<Record<AiProviderId, string>> = {
   deepseek: 'https://api.deepseek.com/v1',
   openai: 'https://api.openai.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama: 'http://localhost:11434/v1',
+  litellm: 'http://localhost:4000/v1',
 }
 
 /** route a one-shot (non-streaming, non-tool-calling) chat call by provider id */
@@ -147,20 +155,19 @@ export async function chatForProvider(
         return chatGemini(wd, config, system, user)
       case 'deepseek':
       case 'openai':
-        return chatOpenAiCompatible(
-          wd,
-          OPENAI_COMPATIBLE_BASE_URLS[provider]!,
-          config,
-          system,
-          user,
-        )
-      case 'custom':
-        if (!config.baseUrl)
+      case 'openrouter':
+      case 'ollama':
+      case 'litellm':
+      case 'custom': {
+        const baseUrl = config.baseUrl || OPENAI_COMPATIBLE_DEFAULT_BASE_URLS[provider]
+        if (!baseUrl) {
           return Promise.resolve({
             ok: false as const,
-            error: 'A custom provider requires a Base URL',
+            error: `${provider} requires a Base URL`,
           })
-        return chatOpenAiCompatible(wd, config.baseUrl, config, system, user)
+        }
+        return chatOpenAiCompatible(wd, baseUrl, config, system, user)
+      }
       default:
         return Promise.resolve({ ok: false as const, error: `Unknown provider: ${provider}` })
     }

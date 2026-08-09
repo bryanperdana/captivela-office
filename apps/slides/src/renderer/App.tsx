@@ -51,7 +51,8 @@ import { AnimPreviewOverlay } from './components/AnimatedSlide'
 import { EquationDialog, HeaderFooterDialog, LinkDialog } from './components/InsertDialogs'
 import { CutoutDialog } from './components/CutoutDialog'
 import type { ChartPresetDef, IconDef, SmartArtDef, WordArtPreset } from './insert-presets'
-import { GensparkMark, IconAiBeautify, IconAiFactCheck, IconAiImage } from './components/icons'
+import { IconAiMark } from '@genoffice/ui'
+import { IconAiBeautify, IconAiFactCheck, IconAiImage } from './components/icons'
 import { ToastHost } from './components/toast'
 import { showToast } from './components/toast-bus'
 import { t, useI18n } from './i18n/locale'
@@ -2377,10 +2378,11 @@ export function App() {
                   setDirty(false)
                 }}
                 currentFilePath={path}
+                onSettingsChanged={setAiSettings}
               />
             ) : (
               <button className="ai-rail" onClick={toggleAi} title={t('appAiRailExpand')}>
-                <GensparkMark size={22} />
+                <IconAiMark size={22} />
               </button>
             )}
           </div>
@@ -2628,8 +2630,8 @@ export function App() {
                           title={t('aiOpenAssistant')}
                           onClick={toggleAi}
                         >
-                          <GensparkMark size={14} />
-                          <span>Genspark AI</span>
+                          <IconAiMark size={14} />
+                          <span>AI</span>
                         </button>
                         {/* Same one-click presets as the Home tab; hidden instead of
                         disabled while the deck has no real content */}

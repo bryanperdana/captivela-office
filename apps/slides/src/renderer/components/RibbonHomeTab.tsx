@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { saveEditSelection } from '../TextEditOverlay'
 import { armColorInput } from '../color-input'
 import { displayFontFamily } from '../konva-adapter'
+import { IconAiMark } from '@genoffice/ui'
 import {
-  GensparkMark,
   IconAiBeautify,
   IconAiFactCheck,
   IconAiImage,
@@ -141,16 +141,16 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
   }
   return (
     <>
-      <Group label="Genspark AI">
+      <Group label="AI">
         <button
           className={`rb-big ai-entry${aiOpen ? ' active' : ''}`}
           title={t('aiOpenAssistant')}
           onClick={onToggleAi}
         >
           <span className="rb-big-icon">
-            <GensparkMark size={26} />
+            <IconAiMark size={26} />
           </span>
-          <span>Genspark AI</span>
+          <span>AI</span>
         </button>
         <button
           className="rb-big ai-entry"

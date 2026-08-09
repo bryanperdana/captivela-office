@@ -4,22 +4,32 @@
  * to avoid renderer CORS), search tools, and the slides-only ai:* channels
  * (image generation, media analysis, style templates).
  */
-import { app, ipcMain, shell } from 'electron'
+import { app, ipcMain, safeStorage, shell } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AiCreditsError,
   AiTimeoutError,
-  defaultAiSettings,
-  resolveAiSettings,
+  GENSPARK_CLOUD_ENABLED,
   streamForProvider,
+  type AiCheckRequest,
   type AiSettings,
   type AiStreamChunk,
   type AiStreamRequest,
   type GenSparkAccountStatus,
-  type LegacyAiSettings,
 } from '@genoffice/ai-provider'
-import { fetchRemoteImage } from '@genoffice/electron-utils'
+import {
+  clearApiKeyFromRenderer,
+  createAiSettingsStore,
+  fetchRemoteImage,
+  getSettingsForRenderer,
+  redactRequestError,
+  resolveRequestConfig,
+  runConnectionCheck,
+  runToolCallingCheck,
+  setSettingsFromRenderer,
+  type AiSettingsStore,
+} from '@genoffice/electron-utils'
 import {
   webSearch,
   imageSearch,
@@ -55,20 +65,31 @@ function writeJson(path: string, value: unknown): void {
 
 const activeAiStreams = new Map<string, AbortController>()
 
-export function registerAiIpc(): void {
-  ipcMain.handle('ai:get-settings', (): AiSettings => {
-    const stored = readJson<Partial<AiSettings> & LegacyAiSettings>(AI_SETTINGS_PATH(), {})
-    const settings = resolveAiSettings(stored, defaultAiSettings())
-    // AI features all go through Genspark (gsk login); stored settings that chose another provider are normalized back
-    settings.provider = 'genspark'
-    return settings
-  })
+/** Lazily created: userData is only valid once Electron is ready. */
+let aiSettingsStore: AiSettingsStore | null = null
 
-  // Genspark account (gsk login state): the auth source for AI features; when logged out the frontend uses this to guide login
+function getAiSettingsStore(): AiSettingsStore {
+  if (!aiSettingsStore) {
+    aiSettingsStore = createAiSettingsStore({
+      settingsPath: AI_SETTINGS_PATH(),
+      cipher: safeStorage,
+    })
+  }
+  return aiSettingsStore
+}
+
+export function registerAiIpc(): void {
+  // BYOK: the stored provider choice is returned as-is (fresh installs default
+  // to the 'openai' preset) and API keys are stripped — the renderer gets only
+  // an "is a key stored" flag per provider.
+  ipcMain.handle('ai:get-settings', (): AiSettings => getSettingsForRenderer(getAiSettingsStore()))
+
+  // Genspark account: reports signed-out in the BYOK build, so nothing can gate
+  // an AI feature on a Genspark login
   ipcMain.handle(
     'ai:gsk-status',
     async (_event, withEmail?: boolean): Promise<GenSparkAccountStatus> => {
-      if (!hasGskAuth()) return { loggedIn: false }
+      if (!GENSPARK_CLOUD_ENABLED || !hasGskAuth()) return { loggedIn: false }
       if (!withEmail) return { loggedIn: true }
       const info = await gskLoginInfo()
       return info?.email ? { loggedIn: true, email: info.email } : { loggedIn: true }
@@ -76,38 +97,52 @@ export function registerAiIpc(): void {
   )
 
   ipcMain.handle('ai:gsk-login', () => {
+    if (!GENSPARK_CLOUD_ENABLED) return
     ensureGenofficeLogin((url) => void shell.openExternal(url))
   })
 
-  ipcMain.handle('ai:set-settings', (_event, settings: AiSettings) => {
-    writeJson(AI_SETTINGS_PATH(), settings)
-  })
+  ipcMain.handle('ai:set-settings', (_event, settings: unknown) =>
+    setSettingsFromRenderer(getAiSettingsStore(), settings),
+  )
+
+  ipcMain.handle('ai:clear-api-key', (_event, provider: unknown) =>
+    clearApiKeyFromRenderer(getAiSettingsStore(), provider),
+  )
+
+  ipcMain.handle('ai:test-connection', (_event, request: AiCheckRequest) =>
+    runConnectionCheck(getAiSettingsStore(), request ?? {}),
+  )
+
+  ipcMain.handle('ai:test-tool-calling', (_event, request: AiCheckRequest) =>
+    runToolCallingCheck(getAiSettingsStore(), request ?? {}),
+  )
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
-    const { requestId, settings, system, messages } = request
+    const { requestId, system, messages } = request
     const tools = request.tools ?? []
     const maxTokens = request.maxTokens ?? 8192
-    const provider = settings.provider
-    let config = settings.providers?.[provider]
-    // The genspark key never enters the settings file; it is fetched from the gsk login state per request
-    if (provider === 'genspark' && config && !config.apiKey) {
-      config = { ...config, apiKey: gskApiKey() }
-    }
     const send = (chunk: AiStreamChunk) => {
       if (!event.sender.isDestroyed()) event.sender.send('ai:stream-chunk', chunk)
     }
-    if (!config?.apiKey) {
+    // the API key never travels through the renderer: it is read from secure
+    // storage here (or, for genspark, from the gsk login state)
+    const resolved = resolveRequestConfig(getAiSettingsStore(), request.settings, (p) =>
+      p === 'genspark' && GENSPARK_CLOUD_ENABLED ? gskApiKey() : '',
+    )
+    if (!resolved.ok) {
       send({
         requestId,
         type: 'error',
-        error: provider === 'genspark' ? tm('errGskNotLoggedIn') : tm('errNoApiKey', { provider }),
+        error:
+          resolved.kind === 'model'
+            ? tm('errNoModel')
+            : request.settings?.provider === 'genspark'
+              ? tm('errGskNotLoggedIn')
+              : resolved.error,
       })
       return
     }
-    if (!config.model) {
-      send({ requestId, type: 'error', error: tm('errNoModel') })
-      return
-    }
+    const { provider, config } = resolved
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
@@ -130,7 +165,7 @@ export function registerAiIpc(): void {
       if (controller.signal.aborted) {
         send({ requestId, type: 'done' })
       } else {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = redactRequestError(err instanceof Error ? err.message : String(err), config)
         console.error(`[ai-stream] ${requestId} (${provider}/${config.model}) failed:`, msg)
         send({
           requestId,

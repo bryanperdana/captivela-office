@@ -5,7 +5,8 @@ import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react'
 import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
-import { AiPanel, GensparkMark } from './ai/AiPanel'
+import { IconAiMark } from '@genoffice/ui'
+import { AiPanel } from './ai/AiPanel'
 import type { PdfAiDeps } from './ai/tools'
 import {
   MARKUP_COLORS,
@@ -2244,7 +2245,7 @@ export default function App() {
               title={t('aiOpenAssistant')}
               onClick={() => setAiCollapsed(false)}
             >
-              <GensparkMark size={22} />
+              <IconAiMark size={22} />
             </button>
           )}
           <AiPanel api={aiApi} onCollapse={() => setAiCollapsed(true)} />

@@ -10,7 +10,11 @@
 import type { RenderSlide } from '@genoffice/pptx-render'
 import type { SlideComment, SectionInfo } from '@genoffice/pptx-engine'
 import type {
+  AiCheckRequest,
+  AiCheckResult,
+  AiProviderId,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   AiStreamRequest,
   GenSparkAccountStatus,
@@ -20,15 +24,20 @@ export type { SlideComment, SectionInfo } from '@genoffice/pptx-engine'
 
 // Canonical definitions of AI-related types live in @genoffice/ai-provider / @genoffice/agent-core (shared with docs)
 export type {
+  AiCheckFailureKind,
+  AiCheckRequest,
+  AiCheckResult,
   AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   AiStreamRequest,
+  AppSurface,
   GenSparkAccountStatus,
 } from '@genoffice/ai-provider'
-export { AI_PROVIDERS } from '@genoffice/ai-provider'
+export { AI_PROVIDERS, BYOK_PRESET_IDS } from '@genoffice/ai-provider'
 export type { AgentToolCall, AgentToolDef } from '@genoffice/agent-core'
 
 export interface OpenResult {
@@ -1282,7 +1291,12 @@ export interface SlidesApi {
   /** The file was renamed externally (shell Home list rename) — pushes the new path, the renderer updates the title bar */
   onRenamed: (handler: (newPath: string) => void) => () => void
   getAiSettings: () => Promise<AiSettings>
-  setAiSettings: (settings: AiSettings) => Promise<void>
+  /** validated in the main process; the returned result carries the field-level message on failure */
+  setAiSettings: (settings: AiSettings) => Promise<AiSettingsSaveResult>
+  /** the only way a stored API key is removed (a blank key field means "unchanged") */
+  clearAiApiKey: (provider: AiProviderId) => Promise<AiSettingsSaveResult>
+  testAiConnection: (request?: AiCheckRequest) => Promise<AiCheckResult>
+  testAiToolCalling: (request?: AiCheckRequest) => Promise<AiCheckResult>
   aiStream: (request: AiStreamRequest) => Promise<void>
   aiStreamCancel: (requestId: string) => Promise<void>
   /** Genspark account status (gsk login state); with withEmail also fetches the email (needs a network request, slower) */

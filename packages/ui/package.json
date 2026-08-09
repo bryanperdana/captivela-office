@@ -4,12 +4,16 @@
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
-  "description": "Shared renderer UI components for the office apps (AI panel composer, icons); styling stays per-app via the shared class names",
+  "description": "Shared renderer UI components for the office apps (AI panel composer, BYOK settings dialog, icons); styling stays per-app via the shared class names",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@genoffice/ai-provider": "*",
+    "@genoffice/i18n": "*"
   },
   "peerDependencies": {
     "react": "^19.0.0"

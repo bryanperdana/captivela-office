@@ -1,5 +1,13 @@
 import type { Lang } from '@genoffice/i18n'
-import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
+import type {
+  AiCheckRequest,
+  AiCheckResult,
+  AiProviderId,
+  AiSettings,
+  AiSettingsSaveResult,
+  AiStreamChunk,
+  AiStreamRequest,
+} from '@genoffice/ai-provider'
 
 export const PDF_CHANNELS = {
   consumePending: 'pdf:consume-pending',
@@ -155,6 +163,10 @@ export type ExportImagesResult =
 /** AI channels are app-wide shared ipcMain handlers (shell registers via docs-main registerAiIpc); pass-through only */
 export const AI_CHANNELS = {
   getSettings: 'ai:get-settings',
+  setSettings: 'ai:set-settings',
+  clearApiKey: 'ai:clear-api-key',
+  testConnection: 'ai:test-connection',
+  testToolCalling: 'ai:test-tool-calling',
   stream: 'ai:stream',
   streamChunk: 'ai:stream-chunk',
   streamCancel: 'ai:stream-cancel',
@@ -184,6 +196,12 @@ export interface PdfApi {
   getLanguage(): Promise<Lang>
   onLanguageChanged(handler: (lang: Lang) => void): () => void
   getAiSettings(): Promise<AiSettings>
+  /** validated in the main process; the result carries the field-level message on failure */
+  setAiSettings(settings: AiSettings): Promise<AiSettingsSaveResult>
+  /** the only way a stored API key is removed (a blank key field means "unchanged") */
+  clearAiApiKey(provider: AiProviderId): Promise<AiSettingsSaveResult>
+  testAiConnection(request?: AiCheckRequest): Promise<AiCheckResult>
+  testAiToolCalling(request?: AiCheckRequest): Promise<AiCheckResult>
   aiStream(request: AiStreamRequest): Promise<void>
   aiStreamCancel(requestId: string): Promise<void>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void

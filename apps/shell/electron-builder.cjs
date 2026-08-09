@@ -12,28 +12,19 @@
  * When the variable is unset (forks, PR smoke builds, plain local packaging)
  * the publish config is omitted: electron-builder then bakes no
  * app-update.yml into the app and in-app auto-update stays disabled.
+ *
+ * CAPTIVELA_OFFICE_RELEASE_SIGNING — set to "1" for a release build that must be
+ * signed, hardened and notarized. Unset (the default) produces an unsigned
+ * local package: the BYOK build talks only to the user's own endpoint, so a
+ * contributor packaging it on their own Mac needs no Apple Developer identity,
+ * and electron-builder must not fail looking for one.
  */
 
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
 
 const updateUrl = process.env.GENOFFICE_UPDATE_URL
-
-// The gsk CLI tree below is copied verbatim from node_modules, and the
-// nested commander path depends on npm's current hoisting layout — fail the
-// build with a clear message if an install ever changes it, instead of
-// shipping an installer with a broken gsk runtime.
-for (const rel of [
-  '../../node_modules/@genspark/cli',
-  '../../node_modules/@genspark/cli/node_modules/commander',
-  '../../node_modules/ws',
-]) {
-  if (!existsSync(join(__dirname, rel))) {
-    throw new Error(
-      `electron-builder extraResources source missing: ${rel} (npm hoisting changed?)`,
-    )
-  }
-}
+const releaseSigning = process.env.CAPTIVELA_OFFICE_RELEASE_SIGNING === '1'
 
 // The module trees are electron-vite outputs produced by build:all; a missing
 // one means that module's build did not run or failed. electron-builder only
@@ -56,8 +47,8 @@ function assertModuleTreesPresent() {
 
 /** @type {import('electron-builder').Configuration} */
 const config = {
-  appId: 'com.genoffice.app',
-  productName: 'GenOffice',
+  appId: 'com.captivela.office',
+  productName: 'Captivela Office',
   electronVersion: '41.7.1',
   directories: {
     output: 'release',
@@ -88,18 +79,10 @@ const config = {
       from: '../pdf/out',
       to: 'modules/pdf',
     },
-    {
-      from: '../../node_modules/@genspark/cli',
-      to: 'gsk/node_modules/@genspark/cli',
-    },
-    {
-      from: '../../node_modules/@genspark/cli/node_modules/commander',
-      to: 'gsk/node_modules/commander',
-    },
-    {
-      from: '../../node_modules/ws',
-      to: 'gsk/node_modules/ws',
-    },
+    // The upstream build also shipped the Genspark `gsk` CLI tree here. The
+    // BYOK build never signs in to Genspark (see GENSPARK_CLOUD_ENABLED), so
+    // the CLI and its hoisting preflight are gone: nothing in the package
+    // would run it.
   ],
   // `mimeType` is read only by the Linux target, where it becomes the
   // desktop entry's MimeType= list; associations without it are dropped
@@ -146,11 +129,15 @@ const config = {
   mac: {
     target: ['dmg', 'zip'],
     category: 'public.app-category.productivity',
-    hardenedRuntime: true,
+    // Signing, the hardened runtime and notarization only apply to a release
+    // build. `identity: null` is what makes electron-builder skip codesigning
+    // outright rather than searching the keychain and failing.
+    hardenedRuntime: releaseSigning,
     gatekeeperAssess: false,
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.plist',
-    notarize: true,
+    notarize: releaseSigning,
+    ...(releaseSigning ? {} : { identity: null }),
     extraResources: [
       {
         from: '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
@@ -187,15 +174,15 @@ const config = {
     // mac and win name the binary from productName; linux instead derives it
     // from package.json "name", and "@genoffice/shell" sanitizes to the
     // invalid "@genofficeshell". Setting it explicitly also makes the
-    // generated genoffice.desktop match the WM_CLASS Electron reports (it
+    // generated captivela-office.desktop match the WM_CLASS Electron reports (it
     // takes that from the executable basename), so the running window links
     // back to its launcher entry.
-    executableName: 'genoffice',
+    executableName: 'captivela-office',
     // Electron takes its X11 app_id from package.json "desktopName"
-    // (genoffice.desktop); syncDesktopName makes electron-builder name the
+    // (captivela-office.desktop); syncDesktopName makes electron-builder name the
     // .desktop file and its StartupWMClass from the same value. Without it
-    // StartupWMClass falls back to productName ("GenOffice"), which does not
-    // match the "genoffice" WM_CLASS the window actually reports — and X11
+    // StartupWMClass falls back to productName ("Captivela Office"), which does not
+    // match the "captivela-office" WM_CLASS the window actually reports — and X11
     // compares case-sensitively, so the taskbar shows an unlinked window.
     syncDesktopName: true,
     extraResources: [
@@ -213,9 +200,11 @@ const config = {
     assertModuleTreesPresent()
   },
   dmg: {
-    sign: true,
+    sign: releaseSigning,
   },
-  afterAllArtifactBuild: 'build/notarize-dmg.js',
+  // notarize-dmg.js already no-ops without Apple credentials; not registering
+  // it at all keeps an unsigned local build from even shelling out to xcrun.
+  ...(releaseSigning ? { afterAllArtifactBuild: 'build/notarize-dmg.js' } : {}),
 }
 
 if (updateUrl) {

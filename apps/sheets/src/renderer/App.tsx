@@ -104,7 +104,12 @@ import {
   composeSkills,
   type AgentImage,
 } from '@genoffice/agent-core'
-import type { AiSettings } from '@genoffice/ai-provider'
+import {
+  GENSPARK_CLOUD_ENABLED,
+  PROVIDER_META_BY_ID,
+  composeSystemSuffix,
+  type AiSettings,
+} from '@genoffice/ai-provider'
 import { type WorkbookOperation } from '../domain/workbook-dsl'
 import { columnIndex, columnLabel, parseAddress, parseRange } from '../domain/cell-address'
 import {
@@ -762,7 +767,8 @@ export function App(): React.JSX.Element {
   if (!agentLoopRef.current) {
     agentLoopRef.current = new AgentLoop({
       transport: createElectronTransport(() => aiSettingsRef.current!),
-      systemSuffix: aiLangDirective,
+      // language directive first, then the user's own instructions from Settings
+      systemSuffix: () => aiLangDirective() + composeSystemSuffix(aiSettingsRef.current, 'sheets'),
       skill: composeSkills('sheets+files', '', [
         createWorkbookSkill(sheetsSkillDeps()),
         createFilesSkill(() => attachmentsRef.current),
@@ -898,22 +904,26 @@ export function App(): React.JSX.Element {
             }
             return next
           })
-          // Signed-out failures get an inline sign-in button; detected via
-          // gsk status rather than matching the localized error text
-          void window.desktopApi
-            .aiGskStatus()
-            .then((status) => {
-              if (status.loggedIn) return
-              setChat((previous) => {
-                const next = [...previous]
-                const last = next.at(-1)
-                if (last?.role === 'assistant' && last.isError) {
-                  next[next.length - 1] = { ...last, loginRequired: true }
-                }
-                return next
+          // Signed-out failures get an inline sign-in button; detected via gsk
+          // status rather than matching the localized error text. The BYOK
+          // build has no account to sign in to, so the probe is skipped and a
+          // failing run points at AI Settings instead.
+          if (GENSPARK_CLOUD_ENABLED) {
+            void window.desktopApi
+              .aiGskStatus()
+              .then((status) => {
+                if (status.loggedIn) return
+                setChat((previous) => {
+                  const next = [...previous]
+                  const last = next.at(-1)
+                  if (last?.role === 'assistant' && last.isError) {
+                    next[next.length - 1] = { ...last, loginRequired: true }
+                  }
+                  return next
+                })
               })
-            })
-            .catch(() => {})
+              .catch(() => {})
+          }
           void autoSaveCompletedAiRun().finally(() => setAiBusy(false))
         },
       },
@@ -925,10 +935,15 @@ export function App(): React.JSX.Element {
     if (!settings) return false
     const config = settings.providers[settings.provider]
     if (!config?.model) return false
-    // Genspark's key never lands in the settings file; the main process injects
-    // it from the gsk login state. When logged out, requests return an error
-    // guiding sign-in — not intercepted here.
-    return settings.provider === 'genspark' || !!config.apiKey
+    // The key itself never reaches the renderer (it lives in the main process's
+    // secure storage), so presence is read from the apiKeyPresent flags that
+    // ai:get-settings sends alongside. Local endpoints (Ollama, an unsecured
+    // LiteLLM) need no key at all, and Genspark's comes from the gsk login
+    // state — when signed out the request returns an error guiding sign-in
+    // rather than being intercepted here.
+    if (settings.provider === 'genspark') return true
+    if (PROVIDER_META_BY_ID.get(settings.provider)?.apiKeyOptional) return true
+    return Boolean(settings.apiKeyPresent?.[settings.provider])
   }
 
   /** Image attachments read as base64 and sent multimodal with this user message
@@ -3004,6 +3019,7 @@ export function App(): React.JSX.Element {
         onStop={handleStopAgent}
         onNewChat={handleNewChat}
         onUndo={handleUndo}
+        onAiSettingsChanged={setAiSettingsState}
         onCommand={handleRibbonCommand}
         zoomPercent={zoomPercent}
         canSave={pendingEdits > 0}

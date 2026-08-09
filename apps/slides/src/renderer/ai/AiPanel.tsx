@@ -22,8 +22,14 @@ import { createElectronTransport } from './transport'
 import { renderSlidesToPngBase64 } from '../export-render'
 import { isQcEnabled, mergeQcPages, qcSlidePage, QC_MAX_PAGES } from './slide-qc'
 import { useI18n, t as tGlobal, aiLangDirective, type TFunc } from '../i18n/locale'
-import { Markdown } from '@genoffice/ui'
-import { GensparkMark } from '../components/icons'
+import {
+  Markdown,
+  AiSettingsDialog,
+  IconAiMark,
+  IconAiSettings,
+  aiSettingsLabel,
+} from '@genoffice/ui'
+import { GENSPARK_CLOUD_ENABLED, composeSystemSuffix } from '@genoffice/ai-provider'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -250,6 +256,8 @@ interface AiPanelProps {
   onDeckProgress?: (event: DeckProgressEvent | null) => void
   /** Absolute path of the currently open file (for chat history persistence) */
   currentFilePath?: string | null
+  /** the settings dialog saved: hand the reloaded settings back to the owner of the state */
+  onSettingsChanged?: (settings: AiSettings) => void
 }
 
 /** Some locales already end the label with an ellipsis — normalize to exactly one. */
@@ -326,9 +334,11 @@ export function AiPanel({
   onPathChange,
   onDeckProgress,
   currentFilePath,
+  onSettingsChanged,
 }: AiPanelProps) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [input, setInput] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [chat, setChat] = useState<ChatEntry[]>([])
   const [snapshots, setSnapshots] = useState<DeckSnapshot[]>([])
@@ -1068,7 +1078,8 @@ export function AiPanel({
     accessRef.current = access
     loopRef.current = new AgentLoop({
       transport: createElectronTransport(() => settingsRef.current),
-      systemSuffix: aiLangDirective,
+      // language directive first, then the user's own instructions from Settings
+      systemSuffix: () => aiLangDirective() + composeSystemSuffix(settingsRef.current, 'slides'),
       skill: composeSkills('slides+files', '', [
         createSlidesSkill(access),
         createFilesSkill(
@@ -1183,21 +1194,25 @@ export function AiPanel({
             return next
           })
           // Signed-out failures get an inline sign-in button; detected via
-          // gsk status rather than matching the localized error text
-          void window.slidesApi
-            .aiGskStatus()
-            .then((status) => {
-              if (status.loggedIn) return
-              setChat((prev) => {
-                const next = [...prev]
-                const last = next.at(-1)
-                if (last?.role === 'assistant' && last.error) {
-                  next[next.length - 1] = { ...last, loginRequired: true }
-                }
-                return next
+          // gsk status rather than matching the localized error text. In the
+          // BYOK build there is no account to sign in to, so the probe is
+          // skipped — a failing run points at Settings instead.
+          if (GENSPARK_CLOUD_ENABLED) {
+            void window.slidesApi
+              .aiGskStatus()
+              .then((status) => {
+                if (status.loggedIn) return
+                setChat((prev) => {
+                  const next = [...prev]
+                  const last = next.at(-1)
+                  if (last?.role === 'assistant' && last.error) {
+                    next[next.length - 1] = { ...last, loginRequired: true }
+                  }
+                  return next
+                })
               })
-            })
-            .catch(() => {})
+              .catch(() => {})
+          }
           void finishHistoryBatch().finally(() => setBusy(false))
         },
       },
@@ -1379,7 +1394,8 @@ export function AiPanel({
           transport,
           pageIndex: page,
           screenshot: shot,
-          systemSuffix: aiLangDirective,
+          systemSuffix: () =>
+            aiLangDirective() + composeSystemSuffix(settingsRef.current, 'slides'),
           signal: controller.signal,
         })
         const batchId = batchOpened ? await window.slidesApi.endHistoryBatch() : null
@@ -1547,7 +1563,7 @@ export function AiPanel({
   if (!open) {
     return (
       <button className="ai-rail" title={t('appAiRailExpand')} onClick={onExpand}>
-        <GensparkMark size={22} />
+        <IconAiMark size={22} />
       </button>
     )
   }
@@ -1574,11 +1590,11 @@ export function AiPanel({
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark AI"
+        aria-label={t('aiPanelTitle')}
       />
       <div className="ai-panel-header">
         <span className="ai-panel-title">
-          <GensparkMark size={22} />
+          <IconAiMark size={22} />
           {t('aiPanelTitle')}
         </span>
         <div className="ai-panel-header-actions">
@@ -1587,6 +1603,14 @@ export function AiPanel({
               <IconNewChat size={15} />
             </button>
           )}
+          <button
+            className="ai-header-btn"
+            onClick={() => setSettingsOpen(true)}
+            title={aiSettingsLabel(lang)}
+            aria-label={aiSettingsLabel(lang)}
+          >
+            <IconAiSettings size={15} />
+          </button>
           {onCollapse && (
             <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapsePanel')}>
               <IconSidebarCollapseLeft size={15} />
@@ -1677,7 +1701,7 @@ export function AiPanel({
               {entry.error && (
                 <div className="ai-msg-error">{t('aiMsgError', { error: entry.error })}</div>
               )}
-              {entry.loginRequired && (
+              {entry.loginRequired && GENSPARK_CLOUD_ENABLED && (
                 <button className="ai-login-btn" onClick={() => void window.slidesApi.aiGskLogin()}>
                   {t('aiGskLoginBtn')}
                 </button>
@@ -1915,6 +1939,15 @@ export function AiPanel({
             </div>
           </div>
         </div>
+      )}
+      {settingsOpen && (
+        <AiSettingsDialog
+          api={window.slidesApi}
+          surface="slides"
+          labels={{ title: aiSettingsLabel(lang) }}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(next) => onSettingsChanged?.(next)}
+        />
       )}
     </aside>
   )

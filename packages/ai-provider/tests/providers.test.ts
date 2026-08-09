@@ -1,16 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { AI_PROVIDERS, defaultAiSettings, resolveAiSettings } from '../src/providers'
+import { AI_PROVIDERS, BYOK_PRESET_IDS, defaultAiSettings, resolveAiSettings } from '../src/providers'
 
 describe('defaultAiSettings', () => {
+  it('defaults to the openai BYOK preset, never genspark', () => {
+    const settings = defaultAiSettings()
+    expect(settings.provider).toBe('openai')
+  })
+
   it('gives every provider its default model and an empty key by default', () => {
     const settings = defaultAiSettings()
-    expect(settings.provider).toBe('genspark')
     for (const meta of AI_PROVIDERS) {
       expect(settings.providers[meta.id].apiKey).toBe('')
       expect(settings.providers[meta.id].model).toBe(meta.defaultModel)
     }
     expect(settings.providers.custom.baseUrl).toBe('')
+    expect(settings.providers.openai.baseUrl).toBe('https://api.openai.com/v1')
+    expect(settings.providers.openrouter.baseUrl).toBe('https://openrouter.ai/api/v1')
+    expect(settings.providers.ollama.baseUrl).toBe('http://localhost:11434/v1')
+    expect(settings.providers.litellm.baseUrl).toBe('http://localhost:4000/v1')
     expect(settings.providers.anthropic.baseUrl).toBeUndefined()
+  })
+
+  it('exposes exactly the BYOK presets required by Phase 1, in order', () => {
+    expect(BYOK_PRESET_IDS).toEqual(['openai', 'openrouter', 'ollama', 'litellm', 'custom'])
+    for (const id of BYOK_PRESET_IDS) {
+      expect(AI_PROVIDERS.some((m) => m.id === id)).toBe(true)
+    }
   })
 
   it('applies caller-supplied default keys only to the listed providers', () => {

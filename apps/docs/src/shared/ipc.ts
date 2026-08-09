@@ -19,7 +19,11 @@ export interface PickImageResult {
 import type {
   AiChatRequest,
   AiChatResponse,
+  AiCheckRequest,
+  AiCheckResult,
+  AiProviderId,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   AiStreamRequest,
   GenSparkAccountStatus,
@@ -28,15 +32,20 @@ import type {
 export type {
   AiChatRequest,
   AiChatResponse,
+  AiCheckFailureKind,
+  AiCheckRequest,
+  AiCheckResult,
   AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   AiStreamRequest,
+  AppSurface,
   GenSparkAccountStatus,
 } from '@genoffice/ai-provider'
-export { AI_PROVIDERS } from '@genoffice/ai-provider'
+export { AI_PROVIDERS, BYOK_PRESET_IDS } from '@genoffice/ai-provider'
 
 // ---- agent protocol: canonical types live in @genoffice/agent-core ----
 
@@ -174,7 +183,12 @@ export interface DesktopApi {
   getRecentFiles(): Promise<string[]>
   pickImage(): Promise<PickImageResult | null>
   getAiSettings(): Promise<AiSettings>
-  setAiSettings(settings: AiSettings): Promise<void>
+  /** validated in the main process; the returned result carries the field-level message on failure */
+  setAiSettings(settings: AiSettings): Promise<AiSettingsSaveResult>
+  /** the only way a stored API key is removed (a blank key field means "unchanged") */
+  clearAiApiKey(provider: AiProviderId): Promise<AiSettingsSaveResult>
+  testAiConnection(request?: AiCheckRequest): Promise<AiCheckResult>
+  testAiToolCalling(request?: AiCheckRequest): Promise<AiCheckResult>
   /** system print dialog for the current window */
   print(): Promise<void>
   /** render the document to PDF and ask where to save; size in twips.

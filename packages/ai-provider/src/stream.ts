@@ -837,9 +837,17 @@ async function openAiCompatibleTurn(
   if (stopReason) cb.onStopReason?.(stopReason)
 }
 
-const OPENAI_COMPATIBLE_BASE_URLS: Partial<Record<AiProviderId, string>> = {
+/**
+ * Built-in fallback base URLs for OpenAI-compatible presets, used only when
+ * the user hasn't overridden `config.baseUrl` (every BYOK preset's base URL
+ * is user-editable — see AI_PROVIDERS' `defaultBaseUrl` in ./providers).
+ */
+const OPENAI_COMPATIBLE_DEFAULT_BASE_URLS: Partial<Record<AiProviderId, string>> = {
   deepseek: 'https://api.deepseek.com/v1',
   openai: 'https://api.openai.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama: 'http://localhost:11434/v1',
+  litellm: 'http://localhost:4000/v1',
 }
 
 /** route a streaming, tool-calling-capable turn by provider id */
@@ -893,18 +901,14 @@ export async function streamForProvider(
       return streamGemini(config, system, messages, tools, maxTokens, cb)
     case 'deepseek':
     case 'openai':
-      return streamOpenAiCompatible(
-        OPENAI_COMPATIBLE_BASE_URLS[provider]!,
-        config,
-        system,
-        messages,
-        tools,
-        maxTokens,
-        cb,
-      )
-    case 'custom':
-      if (!config.baseUrl) throw new Error('A custom provider requires a Base URL')
-      return streamOpenAiCompatible(config.baseUrl, config, system, messages, tools, maxTokens, cb)
+    case 'openrouter':
+    case 'ollama':
+    case 'litellm':
+    case 'custom': {
+      const baseUrl = config.baseUrl || OPENAI_COMPATIBLE_DEFAULT_BASE_URLS[provider]
+      if (!baseUrl) throw new Error(`${provider} requires a Base URL`)
+      return streamOpenAiCompatible(baseUrl, config, system, messages, tools, maxTokens, cb)
+    }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

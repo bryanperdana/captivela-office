@@ -97,7 +97,7 @@ describe('chatForProvider', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const result = await chatForProvider('custom', { apiKey: 'k', model: 'm' }, 'sys', 'hi')
-    expect(result).toEqual({ ok: false, error: 'A custom provider requires a Base URL' })
+    expect(result).toEqual({ ok: false, error: 'custom requires a Base URL' })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

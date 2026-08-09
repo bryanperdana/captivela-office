@@ -24,7 +24,66 @@ export function gensparkAttributionHeaders(baseUrl?: string): Record<string, str
     : {}
 }
 
+/**
+ * Ordered, BYOK-only preset list surfaced in the Settings UI's provider picker.
+ * 'genspark' | 'anthropic' | 'gemini' | 'deepseek' remain wired below (routing,
+ * gsk login) as native/legacy providers but are intentionally excluded from
+ * this list so the default BYOK experience never requires a Genspark account.
+ */
+export const BYOK_PRESET_IDS: AiProviderId[] = ['openai', 'openrouter', 'ollama', 'litellm', 'custom']
+
 export const AI_PROVIDERS: AiProviderMeta[] = [
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
+    defaultModel: 'gpt-4.1-mini',
+    keyPlaceholder: 'sk-...',
+    needsBaseUrl: true,
+    defaultBaseUrl: 'https://api.openai.com/v1',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    models: [
+      'openai/gpt-4o',
+      'anthropic/claude-sonnet-4.5',
+      'meta-llama/llama-3.1-70b-instruct',
+      'google/gemini-2.5-flash',
+    ],
+    defaultModel: 'openai/gpt-4o',
+    keyPlaceholder: 'sk-or-...',
+    needsBaseUrl: true,
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama (local)',
+    models: ['llama3.1', 'qwen2.5', 'mistral'],
+    defaultModel: 'llama3.1',
+    keyPlaceholder: 'Not required for local Ollama',
+    needsBaseUrl: true,
+    defaultBaseUrl: 'http://localhost:11434/v1',
+    apiKeyOptional: true,
+  },
+  {
+    id: 'litellm',
+    label: 'LiteLLM',
+    models: [],
+    defaultModel: '',
+    keyPlaceholder: 'API Key (if your LiteLLM proxy requires one)',
+    needsBaseUrl: true,
+    defaultBaseUrl: 'http://localhost:4000/v1',
+    apiKeyOptional: true,
+  },
+  {
+    id: 'custom',
+    label: 'Custom',
+    models: [],
+    defaultModel: '',
+    keyPlaceholder: 'API Key',
+    needsBaseUrl: true,
+  },
   {
     id: 'genspark',
     label: 'Genspark',
@@ -69,29 +128,21 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     models: ['deepseek-chat', 'deepseek-reasoner'],
     defaultModel: 'deepseek-chat',
     keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
-    defaultModel: 'gpt-4.1-mini',
-    keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'custom',
-    label: 'Custom',
-    models: [],
-    defaultModel: '',
-    keyPlaceholder: 'API Key',
     needsBaseUrl: true,
+    defaultBaseUrl: 'https://api.deepseek.com/v1',
   },
 ]
+
+export const PROVIDER_META_BY_ID: ReadonlyMap<AiProviderId, AiProviderMeta> = new Map(
+  AI_PROVIDERS.map((m) => [m.id, m]),
+)
 
 /**
  * Fresh settings with every provider's default model and an empty key,
  * except providers listed in `defaultApiKeys` (e.g. an app-specific
  * preconfigured Anthropic key). Callers own that policy; this package
- * has no hardcoded keys.
+ * has no hardcoded keys. Defaults to the 'openai' BYOK preset — no
+ * provider requires a Genspark account to work.
  */
 export function defaultAiSettings(
   defaultApiKeys?: Partial<Record<AiProviderId, string>>,
@@ -101,10 +152,10 @@ export function defaultAiSettings(
     providers[meta.id] = {
       apiKey: defaultApiKeys?.[meta.id] ?? '',
       model: meta.defaultModel,
-      baseUrl: meta.needsBaseUrl ? '' : undefined,
+      baseUrl: meta.needsBaseUrl ? (meta.defaultBaseUrl ?? '') : undefined,
     }
   }
-  return { provider: 'genspark', providers }
+  return { provider: 'openai', providers }
 }
 
 /**
@@ -117,6 +168,12 @@ export function resolveAiSettings(
   stored: Partial<AiSettings> & LegacyAiSettings,
   defaults: AiSettings,
 ): AiSettings {
+  // custom instructions are independent of the provider shape, so they survive
+  // both the modern and the legacy-migration path
+  const instructions: Pick<AiSettings, 'globalInstructions' | 'perAppInstructions'> = {
+    ...(stored.globalInstructions ? { globalInstructions: stored.globalInstructions } : {}),
+    ...(stored.perAppInstructions ? { perAppInstructions: stored.perAppInstructions } : {}),
+  }
   if (!stored.providers) {
     if (stored.apiKey) {
       defaults.providers.custom = {
@@ -125,10 +182,11 @@ export function resolveAiSettings(
         baseUrl: stored.baseUrl ?? 'https://api.openai.com/v1',
       }
     }
-    return defaults
+    return { ...defaults, ...instructions }
   }
   return {
     provider: stored.provider ?? defaults.provider,
     providers: { ...defaults.providers, ...stored.providers },
+    ...instructions,
   }
 }

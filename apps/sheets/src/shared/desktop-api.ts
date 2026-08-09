@@ -3,7 +3,11 @@ import { z } from 'zod'
 import type {
   AiChatRequest,
   AiChatResponse,
+  AiCheckRequest,
+  AiCheckResult,
+  AiProviderId,
   AiSettings,
+  AiSettingsSaveResult,
   AiStreamChunk,
   AiStreamRequest,
   GenSparkAccountStatus,
@@ -1692,6 +1696,26 @@ export const aiSettingsInputSchema = z
   .object({
     provider: z.string().min(1),
     providers: z.record(z.string(), aiProviderConfigSchema),
+    /** BYOK custom instructions; appended to the built-in system prompt, never substituted for it */
+    globalInstructions: z.string().optional(),
+    perAppInstructions: z.record(z.string(), z.string()).optional(),
+    /**
+     * Main→renderer UX state (which providers have a stored key). Accepted so a
+     * plain get→set round trip validates; the main process ignores the value.
+     */
+    apiKeyPresent: z.record(z.string(), z.boolean()).optional(),
+  })
+  .strict()
+
+/// Payload for Test Connection / Test Tool Calling. Every field is optional:
+/// what the Settings dialog omits falls back to the stored configuration, and
+/// `apiKey` is only sent when the user wants to test a key before saving it.
+export const aiCheckRequestSchema = z
+  .object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    baseUrl: z.string().optional(),
+    apiKey: z.string().optional(),
   })
   .strict()
 
@@ -1769,6 +1793,7 @@ export const aiStreamRequestSchema = z
   .strict()
 
 export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>
+export type AiCheckRequestInput = z.infer<typeof aiCheckRequestSchema>
 export type AiChatRequestInput = z.infer<typeof aiChatRequestSchema>
 export type AiStreamRequestInput = z.infer<typeof aiStreamRequestSchema>
 
@@ -1895,7 +1920,12 @@ export interface DesktopApi {
   /// shell home.
   consumeNewBlankWorkbook(): Promise<boolean>
   getAiSettings(): Promise<AiSettings>
-  setAiSettings(settings: AiSettings): Promise<void>
+  /// Validated in the main process; the result carries the field-level message on failure.
+  setAiSettings(settings: AiSettings): Promise<AiSettingsSaveResult>
+  /// The only way a stored API key is removed (a blank key field means "unchanged").
+  clearAiApiKey(provider: AiProviderId): Promise<AiSettingsSaveResult>
+  testAiConnection(request?: AiCheckRequest): Promise<AiCheckResult>
+  testAiToolCalling(request?: AiCheckRequest): Promise<AiCheckResult>
   aiChat(request: AiChatRequest): Promise<AiChatResponse>
   /// start a streaming AI call; deltas arrive via onAiStream with the same requestId
   aiStream(request: AiStreamRequest): Promise<void>
