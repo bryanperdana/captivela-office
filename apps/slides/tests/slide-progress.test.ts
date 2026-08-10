@@ -1,7 +1,7 @@
 /**
  * Generation progress checklist (todolist-style reminder) verification:
  * after plan_deck plans N pages, buildContext() should report them all unfinished; when a
- * generate_deck run leaves pages failed (cloud generation skips a page after its one retry),
+ * generate_deck run leaves pages failed (AI generation skips a page after its one retry),
  * each buildContext() round should inject a progress hint ("X still missing, page Y unfinished"),
  * mechanically reminding the AI to top the deck up with another generate_deck append (not
  * relying on a one-shot prompt constraint). Once complete, progress shows done and stops nagging.
@@ -11,7 +11,7 @@ import { createSlidesSkill, type DeckAccess } from '../src/renderer/ai/slides-sk
 import type { RenderSlide } from '@genoffice/pptx-render'
 import type { AgentToolCall } from '../src/shared/ipc'
 
-/** Minimal mock: cloud page generation + landing that tracks the page count. */
+/** Minimal mock: AI page generation + landing that tracks the page count. */
 function makeAccess(opts?: { failPages?: number[] }) {
   const failPages = new Set(opts?.failPages ?? [])
   let pages = 0
@@ -23,12 +23,18 @@ function makeAccess(opts?: { failPages?: number[] }) {
     applyDeck: () => {},
     fitWidthPx: 1280,
     retryBackoffMs: 0,
-    isCloudPageGenEnabled: async () => true,
-    generatePageCloud: async (args) => {
+    getPageGeneratorCapabilities: async () => ({ available: true }),
+    generatePageArtifact: async (args) => {
       if (failPages.has(args.pageIndex)) return { ok: false, error: 'mock fail' }
-      return { ok: true, marker: `PAGE${args.pageIndex}:${args.title}` }
+      return {
+        ok: true,
+        artifact: {
+          schema: 'captivela.page-generation-artifact/v1',
+          artifactId: `artifact-page-${args.pageIndex}`, digest: String(args.pageIndex).repeat(64).slice(0, 64),
+        },
+      }
     },
-    generateFromHtml: async (
+    applyPageArtifacts: async (
       pagesHtml,
       mode = 'replace',
       _deckName?: string,

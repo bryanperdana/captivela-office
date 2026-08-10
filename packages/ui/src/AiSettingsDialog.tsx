@@ -37,6 +37,7 @@ export interface AiSettingsBridge {
   clearAiApiKey(provider: AiProviderId): Promise<AiSettingsSaveResult>
   testAiConnection(request?: AiCheckRequest): Promise<AiCheckResult>
   testAiToolCalling(request?: AiCheckRequest): Promise<AiCheckResult>
+  testAiImageGeneration?(request?: AiCheckRequest & { imageModel?: string; imageSize?: string }): Promise<AiCheckResult>
 }
 
 /**
@@ -58,7 +59,13 @@ export interface AiSettingsDialogLabels {
   removeKey: string
   testConnection: string
   testToolCalling: string
+  testImageGeneration: string
   testing: string
+  imageGeneration: string
+  imageGenerationEnabled: string
+  imageModel: string
+  imageModelHint: string
+  imageSize: string
   instructions: string
   globalInstructions: string
   globalInstructionsHint: string
@@ -84,7 +91,13 @@ const DEFAULT_LABELS: AiSettingsDialogLabels = {
   removeKey: 'Remove key',
   testConnection: 'Test Connection',
   testToolCalling: 'Test Tool Calling',
+  testImageGeneration: 'Test Image Generation',
   testing: 'Testing…',
+  imageGeneration: 'Image generation',
+  imageGenerationEnabled: 'Generate images for AI Slides',
+  imageModel: 'Image model override',
+  imageModelHint: 'Optional. Leave blank to reuse the selected model; support is verified separately.',
+  imageSize: 'Default image size',
   instructions: 'Custom instructions',
   globalInstructions: 'All apps',
   globalInstructionsHint: 'Added to the AI system prompt in every app.',
@@ -168,9 +181,20 @@ export function AiSettingsDialog({
   const [instructionTab, setInstructionTab] = useState<AppSurface>(surface)
   const [connection, setConnection] = useState<CheckState>(IDLE)
   const [toolCalling, setToolCalling] = useState<CheckState>(IDLE)
+  const [imageGenerationCheck, setImageGenerationCheck] = useState<CheckState>(IDLE)
+  const [imageEnabled, setImageEnabled] = useState(false)
+  const [imageModel, setImageModel] = useState('')
+  const [imageSize, setImageSize] = useState<NonNullable<AiSettings['imageGeneration']>['size']>('1024x1024')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
+  const imageCheckReportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!imageGenerationCheck.running && imageGenerationCheck.result) {
+      imageCheckReportRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [imageGenerationCheck])
 
   const meta = PROVIDER_META_BY_ID.get(provider)
 
@@ -183,6 +207,7 @@ export function AiSettingsDialog({
     setApiKey('')
     setConnection(IDLE)
     setToolCalling(IDLE)
+    setImageGenerationCheck(IDLE)
   }, [])
 
   useEffect(() => {
@@ -195,6 +220,9 @@ export function AiSettingsDialog({
         setProvider(loaded.provider)
         setGlobalInstructions(loaded.globalInstructions ?? '')
         setPerApp(loaded.perAppInstructions ?? {})
+        setImageEnabled(loaded.imageGeneration?.enabled ?? false)
+        setImageModel(loaded.imageGeneration?.model ?? '')
+        setImageSize(loaded.imageGeneration?.size ?? '1024x1024')
         hydrateProvider(loaded, loaded.provider)
       })
       .catch((err: unknown) => {
@@ -263,6 +291,28 @@ export function AiSettingsDialog({
       )
   }
 
+  const runImageCheck = () => {
+    if (!api.testAiImageGeneration) return
+    setImageGenerationCheck({ running: true, result: null })
+    void api
+      .testAiImageGeneration({
+        ...checkRequest(),
+        imageModel: imageModel.trim(),
+        imageSize,
+      })
+      .then((result) => setImageGenerationCheck({ running: false, result }))
+      .catch((err: unknown) =>
+        setImageGenerationCheck({
+          running: false,
+          result: {
+            ok: false,
+            kind: 'config',
+            error: err instanceof Error ? err.message : String(err),
+          },
+        }),
+      )
+  }
+
   const removeKey = () => {
     setError('')
     void api
@@ -299,6 +349,13 @@ export function AiSettingsDialog({
     const next: AiSettings = {
       provider,
       providers,
+      imageGeneration: {
+        enabled: imageEnabled,
+        protocol: 'openai-images-v1',
+        size: imageSize,
+        format: 'png',
+        ...(imageModel.trim() ? { model: imageModel.trim() } : {}),
+      },
       ...(globalInstructions.trim() ? { globalInstructions: globalInstructions.trim() } : {}),
       ...(Object.keys(perAppTrimmed).length > 0 ? { perAppInstructions: perAppTrimmed } : {}),
     }
@@ -451,6 +508,63 @@ export function AiSettingsDialog({
             </div>
             <CheckReport label={t.testConnection} state={connection} />
             <CheckReport label={t.testToolCalling} state={toolCalling} />
+
+            <div className="byok-section">
+              <div className="byok-section-title">{t.imageGeneration}</div>
+              <label className="byok-checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={imageEnabled}
+                  onChange={(e) => {
+                    setImageEnabled(e.target.checked)
+                    dirty()
+                  }}
+                />
+                <span>{t.imageGenerationEnabled}</span>
+              </label>
+              <label className="byok-field">
+                <span className="byok-field-label">{t.imageModel}</span>
+                <input
+                  spellCheck={false}
+                  value={imageModel}
+                  maxLength={AI_SETTINGS_LIMITS.model}
+                  placeholder={model || 'image-model-id'}
+                  onChange={(e) => {
+                    setImageModel(e.target.value)
+                    dirty()
+                  }}
+                />
+                <span className="byok-field-hint">{t.imageModelHint}</span>
+              </label>
+              <label className="byok-field">
+                <span className="byok-field-label">{t.imageSize}</span>
+                <select
+                  value={imageSize}
+                  onChange={(e) => {
+                    setImageSize(e.target.value as NonNullable<AiSettings['imageGeneration']>['size'])
+                    dirty()
+                  }}
+                >
+                  <option value="1024x1024">1024 × 1024</option>
+                  <option value="1536x1024">1536 × 1024</option>
+                  <option value="1024x1536">1024 × 1536</option>
+                </select>
+              </label>
+              {api.testAiImageGeneration && (
+                <>
+                  <button
+                    className="byok-btn"
+                    disabled={imageGenerationCheck.running || !!baseUrlError}
+                    onClick={runImageCheck}
+                  >
+                    {imageGenerationCheck.running ? t.testing : t.testImageGeneration}
+                  </button>
+                  <div ref={imageCheckReportRef} className="byok-image-check-report">
+                    <CheckReport label={t.testImageGeneration} state={imageGenerationCheck} />
+                  </div>
+                </>
+              )}
+            </div>
 
             <div className="byok-section">
               <div className="byok-section-title">{t.instructions}</div>

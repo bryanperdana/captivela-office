@@ -1,4 +1,4 @@
-/** Hard guard against "building from scratch by hand": calling add_text_box/add_shape/add_smartart on an empty deck should be refused and redirected to generate_deck. */
+/** Hard guard against "building from scratch by hand": blank decks must use validated generation + compiler output. */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createSlidesSkill, type DeckAccess } from '../src/renderer/ai/slides-skill'
 import type { RenderSlide, PlacedBox, ShapeRenderNode } from '@genoffice/pptx-render'
@@ -72,7 +72,7 @@ function mkAccess(slides: RenderSlide[]): DeckAccess {
     applySlide: () => {},
     applyDeck: () => {},
     fitWidthPx: 1280,
-    generateFromHtml: async () => ({ ok: true, pages: 1 }),
+    applyPageArtifacts: async () => ({ ok: true, pages: 1 }),
   } as unknown as DeckAccess
 }
 const call = (name: string): AgentToolCall => ({
@@ -119,15 +119,18 @@ describe('anti hand-building from scratch', () => {
     expect(r.isError).toBeUndefined()
     expect((window as any).slidesApi.addElement).toHaveBeenCalledOnce()
   })
-  it('after cloud generation has run, allowed even with an empty deck (tweak scenario)', async () => {
+  it('after validated generation/compiler landing has run, allowed even with an empty deck (tweak scenario)', async () => {
     const access = {
       ...mkAccess([blankDeck]),
       retryBackoffMs: 0,
-      isCloudPageGenEnabled: async () => true,
-      generatePageCloud: async () => ({ ok: true, marker: 'cloudpptx:/tmp/x.pptx' }),
+      getPageGeneratorCapabilities: async () => ({ available: true }),
+      generatePageArtifact: async () => ({
+        ok: true,
+        artifact: { schema: 'captivela.page-generation-artifact/v1', artifactId: 'artifact-page-1', digest: 'a'.repeat(64) },
+      }),
     } as unknown as DeckAccess
     const skill = createSlidesSkill(access)
-    // First run one generate_deck to set htmlGenerated=true
+    // First run one generate_deck to record a validated generation/compiler landing.
     await skill.executeTool!({
       id: 't',
       name: 'generate_deck',

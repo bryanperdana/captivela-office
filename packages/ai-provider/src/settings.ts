@@ -139,7 +139,52 @@ export function validateAiSettings(raw: unknown): Validated<AiSettings> {
     }
   }
 
-  const settings: AiSettings = { provider, providers }
+  const defaultImageGeneration: NonNullable<AiSettings['imageGeneration']> = {
+    enabled: false,
+    protocol: 'openai-images-v1',
+    size: '1024x1024',
+    format: 'png',
+  }
+  let imageGeneration = defaultImageGeneration
+  if (raw.imageGeneration !== undefined && raw.imageGeneration !== null) {
+    if (!isPlainObject(raw.imageGeneration)) {
+      return { ok: false, error: 'imageGeneration must be an object' }
+    }
+    const allowed = new Set(['enabled', 'protocol', 'model', 'size', 'format'])
+    const unknown = Object.keys(raw.imageGeneration).find((key) => !allowed.has(key))
+    if (unknown) return { ok: false, error: `Unknown imageGeneration field: ${unknown}` }
+    if (typeof raw.imageGeneration.enabled !== 'boolean') {
+      return { ok: false, error: 'imageGeneration.enabled must be a boolean' }
+    }
+    if (raw.imageGeneration.protocol !== 'openai-images-v1') {
+      return { ok: false, error: 'imageGeneration.protocol must be openai-images-v1' }
+    }
+    if (!['1024x1024', '1536x1024', '1024x1536'].includes(String(raw.imageGeneration.size))) {
+      return { ok: false, error: 'imageGeneration.size is not supported' }
+    }
+    if (raw.imageGeneration.format !== 'png') {
+      return { ok: false, error: 'imageGeneration.format must be png' }
+    }
+    let imageModel: string | undefined
+    if (raw.imageGeneration.model !== undefined) {
+      const checked = validateString(
+        raw.imageGeneration.model,
+        'imageGeneration.model',
+        AI_SETTINGS_LIMITS.model,
+      )
+      if (!checked.ok) return checked
+      imageModel = checked.value.trim() || undefined
+    }
+    imageGeneration = {
+      enabled: raw.imageGeneration.enabled,
+      protocol: 'openai-images-v1',
+      size: raw.imageGeneration.size as NonNullable<AiSettings['imageGeneration']>['size'],
+      format: 'png',
+      ...(imageModel ? { model: imageModel } : {}),
+    }
+  }
+
+  const settings: AiSettings = { provider, providers, imageGeneration }
 
   if (raw.globalInstructions !== undefined && raw.globalInstructions !== null) {
     const checked = validateString(

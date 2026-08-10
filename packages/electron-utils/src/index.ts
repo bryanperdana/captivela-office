@@ -29,6 +29,7 @@ export {
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
+  runImageGenerationCheck,
   runToolCallingCheck,
   setSettingsFromRenderer,
 } from './ai-ipc-core'

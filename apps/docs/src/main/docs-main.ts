@@ -35,6 +35,7 @@ import {
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
+  runImageGenerationCheck,
   runToolCallingCheck,
   safeExternalUrl,
   setSettingsFromRenderer,
@@ -2553,6 +2554,10 @@ export function registerAiIpc(): void {
 
   ipcMain.handle('ai:test-tool-calling', (_event, request: AiCheckRequest) =>
     runToolCallingCheck(getAiSettingsStore(), request ?? {}),
+  )
+
+  ipcMain.handle('ai:test-image-generation', (_event, request: unknown) =>
+    runImageGenerationCheck(getAiSettingsStore(), request ?? {}),
   )
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {

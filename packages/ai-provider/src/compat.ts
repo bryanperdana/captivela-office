@@ -27,6 +27,7 @@ export type AiCheckFailureKind =
   | 'protocol'
   | 'streaming'
   | 'tool-calling'
+  | 'policy'
   | 'config'
 
 export interface AiCheckResult {

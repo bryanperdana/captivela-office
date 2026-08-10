@@ -161,7 +161,16 @@ export function defaultAiSettings(
       baseUrl: meta.needsBaseUrl ? (meta.defaultBaseUrl ?? '') : undefined,
     }
   }
-  return { provider: 'openai', providers }
+  return {
+    provider: 'openai',
+    providers,
+    imageGeneration: {
+      enabled: false,
+      protocol: 'openai-images-v1',
+      size: '1024x1024',
+      format: 'png',
+    },
+  }
 }
 
 /**
@@ -176,7 +185,9 @@ export function resolveAiSettings(
 ): AiSettings {
   // custom instructions are independent of the provider shape, so they survive
   // both the modern and the legacy-migration path
-  const instructions: Pick<AiSettings, 'globalInstructions' | 'perAppInstructions'> = {
+  const imageGeneration = stored.imageGeneration ?? defaults.imageGeneration
+  const extras: Pick<AiSettings, 'imageGeneration' | 'globalInstructions' | 'perAppInstructions'> = {
+    ...(imageGeneration ? { imageGeneration } : {}),
     ...(stored.globalInstructions ? { globalInstructions: stored.globalInstructions } : {}),
     ...(stored.perAppInstructions ? { perAppInstructions: stored.perAppInstructions } : {}),
   }
@@ -188,11 +199,11 @@ export function resolveAiSettings(
         baseUrl: stored.baseUrl ?? 'https://api.openai.com/v1',
       }
     }
-    return { ...defaults, ...instructions }
+    return { ...defaults, ...extras }
   }
   return {
     provider: stored.provider ?? defaults.provider,
     providers: { ...defaults.providers, ...stored.providers },
-    ...instructions,
+    ...extras,
   }
 }

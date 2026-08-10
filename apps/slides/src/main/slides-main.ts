@@ -20,12 +20,11 @@ import {
 import type { WebContents } from 'electron'
 import { execFile } from 'node:child_process'
 import { readFile, writeFile, rm, stat, mkdir, open } from 'node:fs/promises'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
-import { GENSPARK_CLOUD_ENABLED } from '@genoffice/ai-provider'
-import { gskApiKey, gskSlideGenerate, setGskProxyUrl } from '@genoffice/ai-search'
+import { setGskProxyUrl } from '@genoffice/ai-search'
 import {
   appMenuLabels,
   contextMenuLabels,
@@ -243,11 +242,25 @@ import {
   settleStaleHistoryBatch,
   runtime,
   sessions,
+  sessionGenerationId,
+  sessionRevision,
   takeSnapshot,
   windowRefs,
   type Session,
 } from './session-state'
-import { registerAiIpc, registerSlidesOnlyAiIpc } from './ai-ipc'
+import {
+  registerAiIpc,
+  registerSlidesOnlyAiIpc,
+  resolveStoredImageGeneration,
+} from './ai-ipc'
+import { PageArtifactStore, type StoredPageArtifact } from './ai-generation/artifact-store'
+import { resolveRecipeImages } from './ai-generation/resolve-recipe-images'
+import { compileSlideRecipeV1 } from '../shared/ai-generation/recipe-compiler'
+import {
+  validateSlideRecipeV1,
+  type ImageBlockV1,
+} from '../shared/ai-generation/recipe-v1'
+import { compileNativeSlideIrToPptx } from '../shared/ai-generation/native-pptx-compiler'
 
 /** One slide, copied from any deck open in this process, waiting to be pasted into another. */
 let slideClipboard: { bundle: SlideBundle; png?: string } | null = null
@@ -255,10 +268,10 @@ let slideClipboard: { bundle: SlideBundle; png?: string } | null = null
 /** The immediately preceding slide paste per webContents, so the paste-options floater can redo it with another mode. */
 const lastSlidePaste = new Map<number, { afterIndex: number; undoLen: number }>()
 
-// Cloud-generated single-page pptx: marker strings travel in pagesHtml slots; only paths issued
-// by slides:cloud-page-generate are readable (the renderer can't point the reader at arbitrary files)
-const CLOUD_PAGE_PREFIX = 'cloudpptx:'
-const issuedCloudPages = new Set<string>()
+// Main-process-owned opaque artifacts for local generated pages.
+const pageArtifacts = new PageArtifactStore()
+const pageRecipeControllers = new Map<string, AbortController>()
+const pageRecipeKey = (ownerId: number, requestId: string) => `${ownerId}:${requestId}`
 import { registerPresenterIpc } from './presenter-show'
 import { registerAttachmentIpc } from './attachments-ipc'
 
@@ -362,6 +375,7 @@ function trackSlidesWebContents(wc: WebContents): void {
     if (s && !sessionDirty(s)) dropUntitledRecovery(wc.id)
     else untitledRecovery.delete(wc.id)
     sessions.delete(wc.id)
+    pageArtifacts.revokeOwner(wc.id)
     pendingByWc.delete(wc.id)
     clipboards.delete(wc.id)
     lastSlidePaste.delete(wc.id)
@@ -1287,65 +1301,138 @@ export function registerSlidesIpc(): void {
     )
     return rebuildSlide(session, op.slideIndex)
   })
-  // ── Cloud single-page generation (gsk slide_generate): brief → cloud HTML+conversion → one-slide
-  // pptx saved to a temp file. Returns a marker string that flows through the same pagesHtml slots
-  // as locally generated HTML; slides:html-to-pptx recognizes it and reads the bytes instead of
-  // converting. Captivela's BYOK build keeps this off unless both the global
-  // cloud gate and the explicit CAPTIVELA_OFFICE_CLOUD_SLIDE=1 opt-in are enabled.
-  const cloudSlideEnabled = () =>
-    GENSPARK_CLOUD_ENABLED && process.env.CAPTIVELA_OFFICE_CLOUD_SLIDE === '1' && !!gskApiKey()
+  ipcMain.handle('slides:page-generation-capabilities', (e) => {
+    const session = sessions.get(e.sender.id)
+    return session
+      ? { available: true, revision: sessionRevision(session) }
+      : { available: false, revision: 0, reason: 'Open or create a deck first.' }
+  })
 
-  ipcMain.handle('slides:cloud-gen-status', () => ({ enabled: cloudSlideEnabled() }))
+  ipcMain.handle('slides:cancel-page-recipe', (e, rawRequestId: unknown) => {
+    const requestId = typeof rawRequestId === 'string' ? rawRequestId : ''
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(requestId)) return { ok: false }
+    const controller = pageRecipeControllers.get(pageRecipeKey(e.sender.id, requestId))
+    controller?.abort()
+    return { ok: Boolean(controller) }
+  })
 
   ipcMain.handle(
-    'slides:cloud-page-generate',
+    'slides:compile-page-recipe',
     async (
-      _e,
-      op: {
-        brief: string
-        title?: string
-        styleSkill?: string
-        deckContext?: Record<string, unknown>
-        images?: { url: string; caption?: string }[]
-        width?: number
-        height?: number
-      },
-    ): Promise<{ ok: boolean; marker?: string; error?: string }> => {
-      if (!cloudSlideEnabled()) return { ok: false, error: 'cloud slide generation is disabled' }
+      e,
+      op: { recipe: unknown; theme: unknown; expectedRevision: number; requestId: string },
+    ): Promise<{
+      ok: boolean
+      artifact?: StoredPageArtifact
+      warnings?: string[]
+      error?: string
+    }> => {
+      const currentSession = sessions.get(e.sender.id)
+      if (!currentSession) return { ok: false, error: 'no active deck session' }
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(op?.requestId ?? ''))
+        return { ok: false, error: 'invalid generation request id' }
+      const currentRevision = sessionRevision(currentSession)
+      if (!Number.isInteger(op?.expectedRevision) || op.expectedRevision < 0)
+        return { ok: false, error: 'invalid generation revision token' }
+      if (op.expectedRevision !== currentRevision)
+        return {
+          ok: false,
+          error: `stale generation: expected deck revision ${op.expectedRevision}, current ${currentRevision}`,
+        }
+      const recipe = validateSlideRecipeV1(op.recipe)
+      if (!recipe.ok)
+        return {
+          ok: false,
+          error: recipe.errors.map((item) => `${item.path} ${item.message}`).join('; '),
+        }
+      const compiled = compileSlideRecipeV1(recipe.value, op.theme)
+      if (!compiled.ok)
+        return {
+          ok: false,
+          error: compiled.errors.map((item) => `${item.path} ${item.message}`).join('; '),
+        }
+      const expectedSessionId = sessionGenerationId(currentSession)
+      const imageBlocks = recipe.value.blocks.filter(
+        (block): block is ImageBlockV1 & { intent: NonNullable<ImageBlockV1['intent']> } =>
+          block.kind === 'image' && Boolean(block.intent),
+      )
+      let imageRun: Awaited<ReturnType<typeof resolveRecipeImages>> | undefined
+      const imageWarnings: string[] = []
+      if (imageBlocks.length > 0) {
+        const imageSettings = resolveStoredImageGeneration()
+        if (!imageSettings.ok) {
+          imageWarnings.push(
+            ...imageBlocks.map(
+              (block) =>
+                `image-generation-unavailable: ${block.assetId}: ${imageSettings.error} An editable placeholder was emitted.`,
+            ),
+          )
+        } else {
+          const controllerKey = pageRecipeKey(e.sender.id, op.requestId)
+          const controller = new AbortController()
+          pageRecipeControllers.set(controllerKey, controller)
+          try {
+            imageRun = await resolveRecipeImages({
+              recipe: recipe.value,
+              ownerId: e.sender.id,
+              deckSessionId: expectedSessionId,
+              expectedRevision: currentRevision,
+              provider: imageSettings.provider,
+              config: imageSettings.config,
+              signal: controller.signal,
+            })
+            if (controller.signal.aborted) {
+              imageRun.revoke()
+              return { ok: false, error: 'image generation cancelled' }
+            }
+          } finally {
+            pageRecipeControllers.delete(controllerKey)
+          }
+          imageWarnings.push(
+            ...imageRun.warnings.map(
+              (warning) => `${warning.code}: ${warning.assetId}: ${warning.message}`,
+            ),
+          )
+        }
+      }
       try {
-        // ultra = opus-class model, matching the local path's quality tier; GENOFFICE_CLOUD_SLIDE_TIER=standard opts down
-        const tier = process.env.GENOFFICE_CLOUD_SLIDE_TIER === 'standard' ? 'standard' : 'ultra'
-        const started = Date.now()
-        const { bytes, model } = await gskSlideGenerate({
-          tier,
-          brief: String(op.brief ?? ''),
-          title: op.title ? String(op.title) : undefined,
-          styleSkill: op.styleSkill ? String(op.styleSkill) : undefined,
-          deckContext: op.deckContext,
-          images: Array.isArray(op.images) ? op.images : undefined,
-          width: op.width,
-          height: op.height,
+        const pptx = await compileNativeSlideIrToPptx(compiled.value, {
+          ...(imageRun ? { resolveImage: imageRun.resolveImage } : {}),
         })
-        console.log(
-          `[cloud-slide] page generated: tier=${tier} model=${model} bytes=${bytes.length} ms=${Date.now() - started}`,
+        const actualSession = sessions.get(e.sender.id)
+        if (
+          actualSession !== currentSession ||
+          sessionGenerationId(currentSession) !== expectedSessionId ||
+          sessionRevision(currentSession) !== currentRevision
+        ) {
+          return { ok: false, error: 'stale generation: deck changed while resolving images' }
+        }
+        const artifact = pageArtifacts.issue(
+          e.sender.id,
+          pptx.bytes,
+          currentRevision,
+          expectedSessionId,
         )
-        const dir = join(app.getPath('temp'), 'genoffice-cloud-pages')
-        mkdirSync(dir, { recursive: true })
-        const path = join(dir, `${randomUUID()}.pptx`)
-        await writeFile(path, bytes)
-        issuedCloudPages.add(path)
-        return { ok: true, marker: CLOUD_PAGE_PREFIX + path }
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        const warnings = [
+          ...compiled.warnings.map((warning) => `${warning.code}: ${warning.message}`),
+          ...imageWarnings,
+          ...pptx.warnings.map((warning) => `${warning.code}: ${warning.message}`),
+        ]
+        return { ok: true, artifact, ...(warnings.length ? { warnings } : {}) }
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      } finally {
+        imageRun?.revoke()
       }
     },
   )
 
+
   ipcMain.handle(
-    'slides:html-to-pptx',
+    'slides:apply-page-artifacts',
     async (
       e,
-      pagesHtml: string[],
+      pagesHtml: StoredPageArtifact[],
       fitWidthPx: number,
       mode?: 'replace' | 'append' | 'replace_at' | 'insert_at',
       atIndex?: number,
@@ -1355,25 +1442,42 @@ export function registerSlidesIpc(): void {
           appendedFrom?: number
           replacedIndex?: number
           insertedIndex?: number
+          revision?: number
           fallbackReason?: string
           imageFailures?: { page: number; url: string }[]
         })
       | { error: string }
     > => {
-      // Every page arrives as a cloud marker (cloudpptx:<path> written by
-      // slides:cloud-page-generate, pointing at a one-slide pptx temp file); this handler only
-      // reads and lands the bytes.
-      // replace: assemble the whole batch into one multi-page pptx as the new deck base.
-      // append: merge the "new pages" one by one into the existing deck via mergeSlideFromPptx
-      // (earlier pages are untouched).
-      const readCloudPage = async (marker: string): Promise<{ bytes: Uint8Array }> => {
-        if (!marker.startsWith(CLOUD_PAGE_PREFIX)) throw new Error('expected a cloud page marker')
-        const path = marker.slice(CLOUD_PAGE_PREFIX.length)
-        if (!issuedCloudPages.has(path)) throw new Error('unknown cloud page marker')
-        return { bytes: new Uint8Array(await readFile(path)) }
+      const landingSession = sessions.get(e.sender.id)
+      const landingSessionId = landingSession ? sessionGenerationId(landingSession) : undefined
+      const landingRevision = landingSession ? sessionRevision(landingSession) : 0
+      const assertLandingCurrent = (): void => {
+        const current = sessions.get(e.sender.id)
+        if (
+          !landingSession ||
+          current !== landingSession ||
+          sessionGenerationId(landingSession) !== landingSessionId ||
+          sessionRevision(landingSession) !== landingRevision
+        )
+          throw new Error('stale generated artifact: deck changed while landing')
+      }
+      const cloneOpened = async (session: Session) => openPptx(await savePptx(session.opened))
+      // Artifacts stay opaque in the renderer; only this main-process store can resolve bytes.
+      const readArtifact = async (artifact: StoredPageArtifact): Promise<{ bytes: Uint8Array }> => {
+        const consumed = pageArtifacts.consumeWithMetadata(e.sender.id, artifact)
+        const actualSession = sessions.get(e.sender.id)
+        const actualRevision = actualSession ? sessionRevision(actualSession) : 0
+        const actualSessionId = actualSession ? sessionGenerationId(actualSession) : undefined
+        if (consumed.expectedSessionId !== actualSessionId)
+          throw new Error('stale generated artifact: deck session changed')
+        if (consumed.expectedRevision !== actualRevision)
+          throw new Error(
+            `stale generated artifact: expected deck revision ${consumed.expectedRevision}, current ${actualRevision}`,
+          )
+        return { bytes: consumed.bytes }
       }
       const assembleDeck = async (): Promise<{ bytes: Uint8Array }> => {
-        const perPage = await Promise.all(pagesHtml.map(readCloudPage))
+        const perPage = await Promise.all(pagesHtml.map(readArtifact))
         const base = await openPptx(perPage[0]!.bytes)
         for (const one of perPage.slice(1)) await mergeSlideFromPptx(base, one.bytes)
         for (const s of base.deck.slides) promoteSlideBackground(s, base.deck.size)
@@ -1389,50 +1493,40 @@ export function registerSlidesIpc(): void {
           if (!existing) {
             return { error: tm('errNoDeckAppend') }
           }
-          const opened = existing.opened
-          const beforeCount = opened.deck.slides.length
-          // Push an undo snapshot: appending is an ordinary edit, ⌘Z should return to the
-          // pre-append state (previously the undoStack was simply cleared, making all of the
-          // user's prior manual edits non-undoable — inconsistent with replace_at behavior)
-          pushHistory(existing)
-          let merged = 0
-          let lastErr: string | undefined
-          for (const html of pagesHtml) {
-            try {
-              const one = await readCloudPage(html)
-              const slide = await mergeSlideFromPptx(opened, one.bytes)
-              if (slide) {
-                promoteSlideBackground(slide, opened.deck.size)
-                merged += 1
-              } else lastErr = tm('errMergeFailed')
-            } catch (pageErr) {
-              lastErr = pageErr instanceof Error ? pageErr.message : String(pageErr)
+          const beforeCount = existing.opened.deck.slides.length
+          // Resolve and revision-check every artifact before mutation. pushHistory bumps the
+          // revision, so consuming afterwards would make a valid artifact look stale.
+          let resolvedPages: Array<{ bytes: Uint8Array }>
+          try {
+            resolvedPages = await Promise.all(pagesHtml.map(readArtifact))
+          } catch (pageErr) {
+            return {
+              error: tm('errAppendFailed', {
+                reason: pageErr instanceof Error ? pageErr.message : String(pageErr),
+              }),
             }
           }
-          if (merged === 0) {
-            existing.undoStack.pop() // Nothing happened, pop the just-pushed snapshot
-            return { error: tm('errAppendFailed', { reason: lastErr ?? tm('errUnknown') }) }
+          const staged = await cloneOpened(existing)
+          for (const one of resolvedPages) {
+            const slide = await mergeSlideFromPptx(staged, one.bytes)
+            if (!slide) return { error: tm('errAppendFailed', { reason: tm('errMergeFailed') }) }
+            promoteSlideBackground(slide, staged.deck.size)
           }
+          const bytes = await savePptx(staged)
+          const committedOpened = existing.path ? await openPptx(bytes) : staged
+          assertLandingCurrent()
+          pushHistory(existing)
+          existing.opened = committedOpened
           existing.fitWidthPx = fitWidthPx
-          // Save the draft: persist the current complete deck
-          const bytes = await savePptx(opened)
           await saveDraftAfterGenerate(e.sender, existing, bytes, 'append', deckName)
-          // Draft now matches memory: reopen from the output bytes to clear dirty (same as
-          // slides:save) — otherwise pure AI generation (per-page append merges mark
-          // structureDirty) would trigger the close confirmation even without edits
-          if (existing.path) {
-            existing.opened = await openPptx(bytes)
-            existing.metaDirty = false
-          }
+          if (existing.path) existing.metaDirty = false
           return {
             path: existing.path,
             slides: buildAllRenderSlides(existing.opened, fitWidthPx),
             size: { cx: existing.opened.deck.size.cx, cy: existing.opened.deck.size.cy },
             defaultFont: deckDefaultFont(existing.opened),
             appendedFrom: beforeCount,
-            ...(lastErr && merged < pagesHtml.length
-              ? { fallbackReason: tm('errPartialAppend', { reason: lastErr }) }
-              : {}),
+            revision: sessionRevision(existing),
           }
         }
 
@@ -1445,8 +1539,7 @@ export function registerSlidesIpc(): void {
           if (!existing) {
             return { error: tm('errNoDeckReplace') }
           }
-          const opened = existing.opened
-          const total = opened.deck.slides.length
+          const total = existing.opened.deck.slides.length
           if (atIndex == null || !Number.isInteger(atIndex) || atIndex < 0 || atIndex >= total) {
             return { error: tm('errIndexRange', { max: total - 1 }) }
           }
@@ -1454,36 +1547,28 @@ export function registerSlidesIpc(): void {
           if (!html || pagesHtml.length !== 1) {
             return { error: tm('errReplaceNeedsOne') }
           }
-          const one = await readCloudPage(html)
-          pushHistory(existing)
-          const rollback = () => {
-            const snap = existing.undoStack.pop()
-            if (snap) restoreSnapshot(existing, snap)
-          }
-          const merged = await mergeSlideFromPptx(opened, one.bytes)
-          if (!merged) {
-            rollback()
-            return { error: tm('errMergeFailed') }
-          }
-          promoteSlideBackground(merged, opened.deck.size)
-          // The new page is at the end (index=total); after moving to atIndex the old page gets pushed to atIndex+1, delete it
-          if (!moveSlide(opened, total, atIndex) || !deleteSlide(opened, atIndex + 1)) {
-            rollback()
+          const one = await readArtifact(html)
+          const staged = await cloneOpened(existing)
+          const merged = await mergeSlideFromPptx(staged, one.bytes)
+          if (!merged) return { error: tm('errMergeFailed') }
+          promoteSlideBackground(merged, staged.deck.size)
+          if (!moveSlide(staged, total, atIndex) || !deleteSlide(staged, atIndex + 1))
             return { error: tm('errReplaceFailed') }
-          }
+          const bytes = await savePptx(staged)
+          const committedOpened = existing.path ? await openPptx(bytes) : staged
+          assertLandingCurrent()
+          pushHistory(existing)
+          existing.opened = committedOpened
           existing.fitWidthPx = fitWidthPx
-          const bytes = await savePptx(opened)
           await saveDraftAfterGenerate(e.sender, existing, bytes, 'append', deckName)
-          if (existing.path) {
-            existing.opened = await openPptx(bytes)
-            existing.metaDirty = false
-          }
+          if (existing.path) existing.metaDirty = false
           return {
             path: existing.path,
             slides: buildAllRenderSlides(existing.opened, fitWidthPx),
             size: { cx: existing.opened.deck.size.cx, cy: existing.opened.deck.size.cy },
             defaultFont: deckDefaultFont(existing.opened),
             replacedIndex: atIndex,
+            revision: sessionRevision(existing),
           }
         }
 
@@ -1495,8 +1580,7 @@ export function registerSlidesIpc(): void {
           if (!existing) {
             return { error: tm('errNoDeckInsert') }
           }
-          const opened = existing.opened
-          const total = opened.deck.slides.length
+          const total = existing.opened.deck.slides.length
           if (atIndex == null || !Number.isInteger(atIndex) || atIndex < 0 || atIndex > total) {
             return { error: tm('errIndexRange', { max: total }) }
           }
@@ -1504,36 +1588,28 @@ export function registerSlidesIpc(): void {
           if (!html || pagesHtml.length !== 1) {
             return { error: tm('errInsertNeedsOne') }
           }
-          const one = await readCloudPage(html)
-          pushHistory(existing)
-          const rollback = () => {
-            const snap = existing.undoStack.pop()
-            if (snap) restoreSnapshot(existing, snap)
-          }
-          const merged = await mergeSlideFromPptx(opened, one.bytes)
-          if (!merged) {
-            rollback()
-            return { error: tm('errMergeFailed') }
-          }
-          promoteSlideBackground(merged, opened.deck.size)
-          // The new page is at the end (index=total); with atIndex=total it belongs at the end anyway, no move needed
-          if (atIndex < total && !moveSlide(opened, total, atIndex)) {
-            rollback()
+          const one = await readArtifact(html)
+          const staged = await cloneOpened(existing)
+          const merged = await mergeSlideFromPptx(staged, one.bytes)
+          if (!merged) return { error: tm('errMergeFailed') }
+          promoteSlideBackground(merged, staged.deck.size)
+          if (atIndex < total && !moveSlide(staged, total, atIndex))
             return { error: tm('errInsertFailed') }
-          }
+          const bytes = await savePptx(staged)
+          const committedOpened = existing.path ? await openPptx(bytes) : staged
+          assertLandingCurrent()
+          pushHistory(existing)
+          existing.opened = committedOpened
           existing.fitWidthPx = fitWidthPx
-          const bytes = await savePptx(opened)
           await saveDraftAfterGenerate(e.sender, existing, bytes, 'append', deckName)
-          if (existing.path) {
-            existing.opened = await openPptx(bytes)
-            existing.metaDirty = false
-          }
+          if (existing.path) existing.metaDirty = false
           return {
             path: existing.path,
             slides: buildAllRenderSlides(existing.opened, fitWidthPx),
             size: { cx: existing.opened.deck.size.cx, cy: existing.opened.deck.size.cy },
             defaultFont: deckDefaultFont(existing.opened),
             insertedIndex: atIndex,
+            revision: sessionRevision(existing),
           }
         }
 
@@ -1549,7 +1625,11 @@ export function registerSlidesIpc(): void {
           redoStack: [],
           htmlPages: null,
         }
-        carryHistoryForReplacement(sessions.get(e.sender.id), replaceSession)
+        assertLandingCurrent()
+        const previousSession = sessions.get(e.sender.id)
+        carryHistoryForReplacement(previousSession, replaceSession)
+        // No prior session still represents a real deck mutation from revision 0 → 1.
+        if (!previousSession) replaceSession.revision = 1
         sessions.set(e.sender.id, replaceSession)
         // Save the draft: await completion so the real path is returned; on failure degrade silently (session.path stays '')
         await saveDraftAfterGenerate(e.sender, replaceSession, bytes, 'replace', deckName)
@@ -1558,6 +1638,7 @@ export function registerSlidesIpc(): void {
           slides: buildAllRenderSlides(opened, fitWidthPx),
           size: { cx: opened.deck.size.cx, cy: opened.deck.size.cy },
           defaultFont: deckDefaultFont(opened),
+          revision: sessionRevision(replaceSession),
         }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -1567,7 +1648,16 @@ export function registerSlidesIpc(): void {
 
   ipcMain.handle('slides:new-blank', async (e, fitWidthPx: number): Promise<OpenResult> => {
     const opened = await openPptx(await createBlankPptx())
-    sessions.set(e.sender.id, { path: '', opened, fitWidthPx, undoStack: [], redoStack: [] })
+    const previous = sessions.get(e.sender.id)
+    const blankSession: Session = {
+      path: '',
+      opened,
+      fitWidthPx,
+      undoStack: [],
+      redoStack: [],
+      revision: previous ? sessionRevision(previous) + 1 : 1,
+    }
+    sessions.set(e.sender.id, blankSession)
     return {
       path: '',
       slides: buildAllRenderSlides(opened, fitWidthPx),

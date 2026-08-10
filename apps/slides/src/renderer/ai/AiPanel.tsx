@@ -29,7 +29,7 @@ import {
   IconAiSettings,
   aiSettingsLabel,
 } from '@genoffice/ui'
-import { GENSPARK_CLOUD_ENABLED, composeSystemSuffix } from '@genoffice/ai-provider'
+import { composeSystemSuffix } from '@genoffice/ai-provider'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -207,8 +207,6 @@ interface ChatEntry {
   streaming?: boolean
   /** the run failed and this user message was rolled back out of the model context */
   undelivered?: boolean
-  /** the run failed because hosted service is signed out — render an inline sign-in button */
-  loginRequired?: boolean
   tools?: ToolActivity[]
   /** Generation progress card (only one per turn, replaced in real time) */
   deckProgress?: DeckProgressSnapshot
@@ -754,15 +752,15 @@ export function AiPanel({
       getSelectedIds: () => selectedRef.current,
       applySlide: (i, updated) => applySlideRef.current(i, updated),
       applyDeck: (all, goTo) => applyDeckRef.current(all, goTo),
-      generateFromHtml: async (
-        pagesHtml: string[],
+      applyPageArtifacts: async (
+        artifacts,
         mode?: 'replace' | 'append' | 'insert_at',
         deckName?: string,
         insertAt?: number,
       ) => {
         try {
-          const res = await window.slidesApi.htmlToPptx(
-            pagesHtml,
+          const res = await window.slidesApi.applyPageArtifacts(
+            artifacts,
             fitWidthPx,
             mode,
             insertAt,
@@ -796,6 +794,7 @@ export function AiPanel({
               pages: res.slides.length,
               appendedFrom,
               insertedIndex,
+              revision: 'revision' in res ? res.revision : undefined,
               fallbackReason,
               imageFailures,
             }
@@ -811,10 +810,10 @@ export function AiPanel({
           return { ok: false, error: e instanceof Error ? e.message : String(e) }
         }
       },
-      regenerateSlide: async (slideIndex: number, html: string) => {
+      applyRegeneratedPage: async (slideIndex, artifact) => {
         try {
-          const res = await window.slidesApi.htmlToPptx(
-            [html],
+          const res = await window.slidesApi.applyPageArtifacts(
+            [artifact],
             fitWidthPx,
             'replace_at',
             slideIndex,
@@ -851,38 +850,140 @@ export function AiPanel({
           setActiveClarify(questions)
         })
       },
-      isCloudPageGenEnabled: async () => {
+      getPageGeneratorCapabilities: async () => {
         try {
-          return !!(await window.slidesApi.cloudGenStatus())?.enabled
+          const result = await window.slidesApi.pageGenerationCapabilities()
+          return { available: result.available, ...(result.reason ? { reason: result.reason } : {}) }
         } catch {
-          return false
+          return { available: false, reason: 'Local slide compiler is unavailable.' }
         }
       },
-      // Cloud single-page generation (gsk slide_generate): the cloud service owns HTML writing +
-      // pptx conversion; the deck-level style/outline stay local.
-      generatePageCloud: async (args) => {
+      generatePageArtifact: async (args) => {
         try {
-          const briefParts = [args.brief]
-          if (args.layout) briefParts.push(`Layout intent: ${args.layout}`)
-          if (args.context)
-            briefParts.push(
-              `Reference material (all real names/figures/facts come from here; do not invent):\n${args.context.slice(0, 4000)}`,
+          const capabilities = await window.slidesApi.pageGenerationCapabilities()
+          if (!capabilities.available)
+            return { ok: false, error: capabilities.reason ?? 'Local slide compiler is unavailable.' }
+
+          const colors = [...args.style.matchAll(/#[0-9A-Fa-f]{6}\b/g)]
+            .map((match) => match[0]!.toUpperCase())
+            .filter((color, index, all) => all.indexOf(color) === index)
+          const theme = {
+            background: colors[0] ?? '#FFFFFF',
+            text: colors[1] ?? '#1A1A2E',
+            accent: colors[2] ?? '#2563EB',
+            secondaryAccent: colors[3] ?? '#F59E0B',
+            surface: colors[4] ?? '#F8FAFC',
+          }
+          const aliases: Record<string, string> = {
+            cover_full_image_overlay: 'cover_typography_hero',
+            cover_split_color: 'cover_typography_hero',
+            cover_dark_minimal: 'cover_typography_hero',
+            cover_magazine: 'cover_typography_hero',
+            cover_split_image: 'content_text_image',
+            left_text_right_image: 'content_text_image',
+            two_column_comparison: 'comparison',
+            timeline_horizontal: 'timeline',
+            full_image_text_overlay: 'content_text_image',
+            kpi_cards_row: 'kpi_cards',
+            chart_with_insight: 'hero_big_number',
+            two_by_two_grid: 'kpi_cards',
+            closing_thank_you: 'closing_cta',
+          }
+          const requestedLayout = aliases[args.layout] ?? args.layout
+          const allowedLayouts = [
+            'cover_typography_hero',
+            'three_column_cards',
+            'hero_big_number',
+            'comparison',
+            'timeline',
+            'kpi_cards',
+            'content_text_image',
+            'closing_cta',
+          ]
+          const layout = allowedLayouts.includes(requestedLayout)
+            ? requestedLayout
+            : args.pageIndex === 1
+              ? 'cover_typography_hero'
+              : args.pageIndex === args.totalPages
+                ? 'closing_cta'
+                : 'three_column_cards'
+          const role =
+            layout === 'cover_typography_hero'
+              ? 'cover'
+              : layout === 'closing_cta'
+                ? 'closing'
+                : layout === 'comparison'
+                  ? 'comparison'
+                  : layout === 'timeline'
+                    ? 'process'
+                    : layout === 'kpi_cards' || layout === 'hero_big_number'
+                      ? 'data'
+                      : 'content'
+          const imageHint = args.images.length
+            ? `\nAvailable image references (represent them only as image blocks with opaque assetId image_1, image_2, etc.; never output URLs or paths): ${args.images.length}`
+            : ''
+          const reference = args.context
+            ? `\nReference material; do not invent facts beyond it:\n${args.context.slice(0, 4000)}`
+            : ''
+          const system =
+            'You create one semantic Captivela SlideRecipeV1. Output exactly one JSON object, no markdown. ' +
+            'Allowed top-level keys only: schema,id,role,layout,title,blocks,speakerNotes. ' +
+            'schema must be "captivela.slide-recipe/v1". ' +
+            'Allowed block shapes only: ' +
+            '{"kind":"text","role":"subtitle|body|caption|quote|source|cta","text":"...","emphasis":"normal|strong|muted"}; ' +
+            '{"kind":"bullets","role":"body|steps|features","items":["..."]}; ' +
+            '{"kind":"metric","label":"...","value":"...","detail":"..."}; ' +
+            '{"kind":"image","assetId":"image_1","alt":"...","crop":"cover|contain","intent":{"prompt":"...","aspectRatio":"1:1|3:2|2:3|16:9|9:16","style":"photo|illustration|editorial|diagram-background"}}; ' +
+            'For an AI-generated visual, include intent with semantic prompt/aspectRatio and optional style. Otherwise omit intent. ' +
+            '{"kind":"chart","chartKind":"bar|line|area|pie|doughnut","categories":["..."],"series":[{"name":"...","values":[1]}],"insight":"..."}. ' +
+            'Never output HTML, CSS, JavaScript, OOXML, coordinates, API calls, URLs, or filesystem paths.'
+          const baseUser =
+            `Create page ${args.pageIndex}/${args.totalPages}. ` +
+            `Use id "page_${args.pageIndex}", role "${role}", layout "${layout}", title ${JSON.stringify(args.title)}.\n` +
+            `Core hook: ${args.coreHook}\nBrief: ${args.brief}${reference}${imageHint}`
+          let repair = ''
+          let lastError = tGlobal('aiErrUnknown')
+          for (let attempt = 0; attempt < 2; attempt++) {
+            if (args.signal?.aborted) return { ok: false, error: tGlobal('aiErrStopped') }
+            const generated = await runLlmOnce(
+              system,
+              baseUser + repair,
+              undefined,
+              true,
+              args.signal,
+              2400,
             )
-          const res = await window.slidesApi.cloudGeneratePage({
-            brief: briefParts.join('\n\n'),
-            title: args.title,
-            styleSkill: args.style,
-            deckContext: {
-              ...(args.topic ? { topic: args.topic } : {}),
-              core_hook: args.coreHook,
-              page_index: args.pageIndex,
-              total_pages: args.totalPages,
-            },
-            images: args.images.map((u) => ({ url: u })),
-            width: args.canvasW,
-            height: args.canvasH,
-          })
-          return res ?? { ok: false, error: tGlobal('aiErrUnknown') }
+            if (!generated.ok || !generated.text) {
+              lastError = generated.error ?? tGlobal('aiErrEmptyOutput')
+              continue
+            }
+            let recipe: unknown
+            try {
+              recipe = JSON.parse(extractJsonObject(generated.text))
+            } catch (error) {
+              lastError = `recipe JSON parse failed: ${error instanceof Error ? error.message : String(error)}`
+              repair = `\nYour previous output was invalid: ${lastError}. Return one corrected JSON object only.`
+              continue
+            }
+            if (args.signal?.aborted) return { ok: false, error: tGlobal('aiErrStopped') }
+            const compileRequestId = crypto.randomUUID()
+            const cancelCompile = () => {
+              void window.slidesApi.cancelPageRecipe(compileRequestId)
+            }
+            args.signal?.addEventListener('abort', cancelCompile, { once: true })
+            const compiled = await window.slidesApi
+              .compilePageRecipe({
+                recipe,
+                theme,
+                expectedRevision: capabilities.revision,
+                requestId: compileRequestId,
+              })
+              .finally(() => args.signal?.removeEventListener('abort', cancelCompile))
+            if (compiled.ok && compiled.artifact) return compiled
+            lastError = compiled.error ?? tGlobal('aiErrUnknown')
+            repair = `\nYour previous recipe failed strict validation: ${lastError.slice(0, 1200)}. Return one corrected JSON object only.`
+          }
+          return { ok: false, error: lastError }
         } catch (e) {
           return { ok: false, error: e instanceof Error ? e.message : String(e) }
         }
@@ -1193,26 +1294,6 @@ export function AiPanel({
             }
             return next
           })
-          // Signed-out failures get an inline sign-in button; detected via
-          // gsk status rather than matching the localized error text. In the
-          // BYOK build there is no account to sign in to, so the probe is
-          // skipped — a failing run points at Settings instead.
-          if (GENSPARK_CLOUD_ENABLED) {
-            void window.slidesApi
-              .aiGskStatus()
-              .then((status) => {
-                if (status.loggedIn) return
-                setChat((prev) => {
-                  const next = [...prev]
-                  const last = next.at(-1)
-                  if (last?.role === 'assistant' && last.error) {
-                    next[next.length - 1] = { ...last, loginRequired: true }
-                  }
-                  return next
-                })
-              })
-              .catch(() => {})
-          }
           void finishHistoryBatch().finally(() => setBusy(false))
         },
       },
@@ -1700,11 +1781,6 @@ export function AiPanel({
               {entry.tools && entry.tools.length > 0 && <ToolChipList tools={entry.tools} />}
               {entry.error && (
                 <div className="ai-msg-error">{t('aiMsgError', { error: entry.error })}</div>
-              )}
-              {entry.loginRequired && GENSPARK_CLOUD_ENABLED && (
-                <button className="ai-login-btn" onClick={() => void window.slidesApi.aiGskLogin()}>
-                  {t('aiGskLoginBtn')}
-                </button>
               )}
               {entry.deckProgress && <DeckProgressCard progress={entry.deckProgress} />}
               {showToolbar && (

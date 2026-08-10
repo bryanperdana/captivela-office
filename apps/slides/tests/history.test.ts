@@ -164,6 +164,23 @@ describe('Slides main-process history batching', () => {
     expect(valueOf(session)).toBe('edited')
   })
 
+  it('bumps the optimistic-concurrency revision on mutation intent and restore', () => {
+    const session = sessionWith('before')
+    expect(session.revision ?? 0).toBe(0)
+    pushHistory(session)
+    expect(session.revision).toBe(1)
+    restoreSnapshot(session, session.undoStack.pop()!)
+    expect(session.revision).toBe(2)
+  })
+
+  it('carries the latest revision into a full-deck replacement', () => {
+    const previous = sessionWith('old')
+    pushHistory(previous)
+    const replacement = sessionWith('new')
+    carryHistoryForReplacement(previous, replacement)
+    expect(replacement.revision).toBe(previous.revision)
+  })
+
   it('a batch left open by a crashed tool path is collapsed so undo still works', () => {
     const session = sessionWith('before')
     // run begins a batch, a tool nests another, then the tool path dies without ending either

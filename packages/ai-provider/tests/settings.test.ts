@@ -126,6 +126,56 @@ describe('validateAiSettings', () => {
     expect(result.ok === false && result.error).not.toContain('kkkk')
   })
 
+  it('defaults missing image-generation settings to disabled and validates explicit config', () => {
+    const migrated = validateAiSettings(base)
+    expect(migrated.ok && migrated.value.imageGeneration).toEqual({
+      enabled: false,
+      protocol: 'openai-images-v1',
+      size: '1024x1024',
+      format: 'png',
+    })
+
+    const explicit = validateAiSettings({
+      ...base,
+      imageGeneration: {
+        enabled: true,
+        protocol: 'openai-images-v1',
+        model: 'image-model-v1',
+        size: '1536x1024',
+        format: 'png',
+      },
+    })
+    expect(explicit.ok && explicit.value.imageGeneration).toEqual({
+      enabled: true,
+      protocol: 'openai-images-v1',
+      model: 'image-model-v1',
+      size: '1536x1024',
+      format: 'png',
+    })
+  })
+
+  it('rejects unsafe or unknown image-generation settings', () => {
+    expect(validateAiSettings({
+      ...base,
+      imageGeneration: {
+        enabled: true,
+        protocol: 'openai-images-v1',
+        size: '1024x1024',
+        format: 'png',
+        endpoint: 'https://model-controlled.example/v1',
+      },
+    }).ok).toBe(false)
+    expect(validateAiSettings({
+      ...base,
+      imageGeneration: {
+        enabled: true,
+        protocol: 'arbitrary-script',
+        size: '4096x4096',
+        format: 'svg',
+      },
+    }).ok).toBe(false)
+  })
+
   it('keeps custom instructions and drops blank ones', () => {
     const result = validateAiSettings({
       ...base,

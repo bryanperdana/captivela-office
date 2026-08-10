@@ -11,6 +11,7 @@ import {
   PROVIDER_META_BY_ID,
   redactSecrets,
   testConnection,
+  testImageGenerationCapability,
   testToolCalling,
   validateAiSettings,
   validateBaseUrl,
@@ -127,6 +128,46 @@ export async function runToolCallingCheck(
   const resolved = resolveCheckRequest(store, asCheckRequest(raw))
   if (!resolved.ok) return { ok: false, kind: 'config', error: resolved.error }
   return testToolCalling(resolved.provider, resolved.config)
+}
+
+/** `ai:test-image-generation` — a real Images API probe, independent of chat/tool checks. */
+export async function runImageGenerationCheck(
+  store: AiSettingsStore,
+  raw: unknown = {},
+): Promise<AiCheckResult> {
+  const resolved = resolveCheckRequest(store, asCheckRequest(raw))
+  if (!resolved.ok) return { ok: false, kind: 'config', error: resolved.error }
+  const record =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  const configured = store.read().imageGeneration
+  const imageModel =
+    typeof record.imageModel === 'string'
+      ? record.imageModel.trim().slice(0, AI_SETTINGS_LIMITS.model)
+      : configured?.model
+  const requestedSize = String(record.imageSize ?? '')
+  const size = (
+    ['1024x1024', '1536x1024', '1024x1536'].includes(requestedSize)
+      ? requestedSize
+      : (configured?.size ?? '1024x1024')
+  ) as '1024x1024' | '1536x1024' | '1024x1536'
+  const baseUrl =
+    resolved.config.baseUrl ??
+    (resolved.provider === 'openai' ? 'https://api.openai.com/v1' : '')
+  if (!baseUrl) return { ok: false, kind: 'config', error: 'No Images API base URL configured.' }
+  const result = await testImageGenerationCapability(
+    { baseUrl, apiKey: resolved.config.apiKey },
+    {
+      protocol: 'openai-images-v1',
+      model: imageModel || resolved.config.model,
+      size,
+      format: 'png',
+    },
+  )
+  return result.supported
+    ? { ok: true, detail: result.detail }
+    : { ok: false, kind: result.kind, error: result.error }
 }
 
 /**

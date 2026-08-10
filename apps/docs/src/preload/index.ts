@@ -67,6 +67,7 @@ const api: DesktopApi = {
   clearAiApiKey: (provider) => ipcRenderer.invoke('ai:clear-api-key', provider),
   testAiConnection: (request) => ipcRenderer.invoke('ai:test-connection', request ?? {}),
   testAiToolCalling: (request) => ipcRenderer.invoke('ai:test-tool-calling', request ?? {}),
+  testAiImageGeneration: (request) => ipcRenderer.invoke('ai:test-image-generation', request ?? {}),
   aiChat: (request: AiChatRequest) => ipcRenderer.invoke('ai:chat', request),
   aiStream: (request: AiStreamRequest) => ipcRenderer.invoke('ai:stream', request),
   aiStreamCancel: (requestId: string) => ipcRenderer.invoke('ai:stream-cancel', requestId),

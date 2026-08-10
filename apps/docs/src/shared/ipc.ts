@@ -189,6 +189,9 @@ export interface DesktopApi {
   clearAiApiKey(provider: AiProviderId): Promise<AiSettingsSaveResult>
   testAiConnection(request?: AiCheckRequest): Promise<AiCheckResult>
   testAiToolCalling(request?: AiCheckRequest): Promise<AiCheckResult>
+  testAiImageGeneration(
+    request?: AiCheckRequest & { imageModel?: string; imageSize?: string },
+  ): Promise<AiCheckResult>
   /** system print dialog for the current window */
   print(): Promise<void>
   /** render the document to PDF and ask where to save; size in twips.

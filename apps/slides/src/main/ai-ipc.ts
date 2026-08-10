@@ -11,12 +11,15 @@ import {
   AiCreditsError,
   AiTimeoutError,
   GENSPARK_CLOUD_ENABLED,
+  generateImage,
   streamForProvider,
   type AiCheckRequest,
   type AiSettings,
   type AiStreamChunk,
   type AiStreamRequest,
   type GenSparkAccountStatus,
+  type ImageGenerationConfig,
+  type ImageGenerationProvider,
 } from '@genoffice/ai-provider'
 import {
   clearApiKeyFromRenderer,
@@ -26,6 +29,7 @@ import {
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
+  runImageGenerationCheck,
   runToolCallingCheck,
   setSettingsFromRenderer,
   type AiSettingsStore,
@@ -35,7 +39,7 @@ import {
   imageSearch,
   ensureGenofficeLogin,
   gskApiKey,
-  gskGenerateImage,
+
   gskAnalyzeMedia,
   gskLoginInfo,
   hasGskAuth,
@@ -43,7 +47,16 @@ import {
 import { addPicture } from '@genoffice/pptx-engine'
 import { EMU_PER_PX_96 } from '@genoffice/pptx-render'
 import { tm } from './i18n-main'
-import { pushHistory, rebuildSlide, sessions } from './session-state'
+import {
+  pushHistory,
+  rebuildSlide,
+  sessionGenerationId,
+  sessionRevision,
+  sessions,
+} from './session-state'
+import { fetchGeneratedImage } from './ai-generation/generated-image-fetch'
+import { normalizeGeneratedImage } from './ai-generation/image-normalizer'
+import { decodeGeneratedImageBase64 } from './ai-generation/image-security'
 
 // ---- AI settings + streaming proxy (the main process does the networking to avoid renderer CORS; implementation shared via @genoffice/ai-provider) ----
 
@@ -76,6 +89,37 @@ function getAiSettingsStore(): AiSettingsStore {
     })
   }
   return aiSettingsStore
+}
+
+export type ResolvedStoredImageGeneration =
+  | { ok: true; provider: ImageGenerationProvider; config: ImageGenerationConfig }
+  | { ok: false; error: string }
+
+/** Main-process-only image config. Secrets are resolved fresh and never cross IPC. */
+export function resolveStoredImageGeneration(): ResolvedStoredImageGeneration {
+  const store = getAiSettingsStore()
+  const stored = store.read()
+  const image = stored.imageGeneration
+  if (!image?.enabled) return { ok: false, error: 'BYOK image generation is disabled.' }
+  const resolved = resolveRequestConfig(store, {
+    provider: stored.provider,
+    providers: stored.providers,
+  })
+  if (!resolved.ok) return { ok: false, error: resolved.error }
+  const baseUrl =
+    resolved.config.baseUrl ??
+    (resolved.provider === 'openai' ? 'https://api.openai.com/v1' : '')
+  if (!baseUrl) return { ok: false, error: 'The selected provider has no Images API base URL.' }
+  return {
+    ok: true,
+    provider: { baseUrl, apiKey: resolved.config.apiKey },
+    config: {
+      protocol: image.protocol,
+      model: image.model || resolved.config.model,
+      size: image.size,
+      format: image.format,
+    },
+  }
 }
 
 export function registerAiIpc(): void {
@@ -115,6 +159,10 @@ export function registerAiIpc(): void {
 
   ipcMain.handle('ai:test-tool-calling', (_event, request: AiCheckRequest) =>
     runToolCallingCheck(getAiSettingsStore(), request ?? {}),
+  )
+
+  ipcMain.handle('ai:test-image-generation', (_event, request: unknown) =>
+    runImageGenerationCheck(getAiSettingsStore(), request ?? {}),
   )
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
@@ -211,35 +259,87 @@ export function registerAiIpc(): void {
 // never called; docs does not have these channels, so putting them in the wrong place raises
 // "No handler registered".
 export function registerSlidesOnlyAiIpc(): void {
-  // gsk (hosted service CLI) capabilities: AI image generation / media analysis. Returns an error prompt when not logged in.
+  // BYOK image generation stays entirely in main: provider payloads are normalized
+  // and inserted as native picture elements without exposing bytes or URLs to renderer.
   ipcMain.handle(
     'ai:generate-image',
     async (
-      _event,
+      event,
       op: {
         prompt: string
-        model?: string
-        referenceImageUrls?: string[]
+        slideIndex: number
+        xPx: number
+        yPx: number
+        wPx: number
+        hPx: number
+        fitWidthPx: number
         aspectRatio?: string
-        imageSize?: string
       },
     ) => {
-      if (!GENSPARK_CLOUD_ENABLED)
-        return { error: 'Cloud image generation is unavailable in this build.' }
-      if (!hasGskAuth()) return { error: tm('errGskCli') }
+      const session = sessions.get(event.sender.id)
+      if (!session) return { error: 'No open slide session.' }
+      const slideIndex = Number(op?.slideIndex)
+      const slide = session.opened.deck.slides[slideIndex]
+      if (!slide) return { error: 'Target slide is unavailable.' }
+      const prompt = String(op?.prompt ?? '').trim()
+      if (!prompt || prompt.length > 2_000) return { error: 'Invalid image prompt.' }
+      const geometry = [op.xPx, op.yPx, op.wPx, op.hPx, op.fitWidthPx].map(Number)
+      if (geometry.some((value) => !Number.isFinite(value)) || geometry[2] <= 0 || geometry[3] <= 0 || geometry[4] <= 0)
+        return { error: 'Invalid image placement.' }
+      const expectedSession = session
+      const expectedGenerationId = sessionGenerationId(session)
+      const expectedRevision = sessionRevision(session)
+      const resolved = resolveStoredImageGeneration()
+      if (!resolved.ok) return { error: resolved.error }
+      const ratio = String(op.aspectRatio ?? '')
+      const size = ratio === '16:9' || ratio === '3:2'
+        ? '1536x1024'
+        : ratio === '9:16' || ratio === '2:3'
+          ? '1024x1536'
+          : resolved.config.size
       try {
-        const r = await gskGenerateImage({
-          prompt: String(op.prompt),
-          model: op.model ? String(op.model) : undefined,
-          referenceImageUrls: Array.isArray(op.referenceImageUrls)
-            ? op.referenceImageUrls.map(String)
-            : undefined,
-          aspectRatio: op.aspectRatio ? String(op.aspectRatio) : undefined,
-          imageSize: op.imageSize ? String(op.imageSize) : undefined,
+        const payload = await generateImage(
+          resolved.provider,
+          { ...resolved.config, size },
+          { prompt, count: 1 },
+        )
+        const source = payload.kind === 'base64'
+          ? { bytes: decodeGeneratedImageBase64(payload.data), declaredContentType: null }
+          : await fetchGeneratedImage(payload.url)
+        const normalized = normalizeGeneratedImage(source.bytes, {
+          declaredContentType: source.declaredContentType,
         })
-        return { url: r.url }
+        const current = sessions.get(event.sender.id)
+        if (
+          current !== expectedSession ||
+          sessionGenerationId(current) !== expectedGenerationId ||
+          sessionRevision(current) !== expectedRevision
+        ) return { error: 'Image generation became stale because the deck changed.' }
+        const baseWidthPx = session.opened.deck.size.cx / EMU_PER_PX_96
+        const scale = geometry[4] / baseWidthPx
+        const toEmu = (px: number) => Math.round((px / scale) * EMU_PER_PX_96)
+        pushHistory(session)
+        const el = addPicture(session.opened, slide, {
+          bytes: normalized.bytes,
+          ext: normalized.ext,
+          offset: {
+            x: toEmu(geometry[0]),
+            y: toEmu(geometry[1]),
+            cx: Math.max(1, toEmu(geometry[2])),
+            cy: Math.max(1, toEmu(geometry[3])),
+          },
+        })
+        if (!el) {
+          session.undoStack.pop()
+          return { error: 'Could not insert generated image.' }
+        }
+        session.fitWidthPx = geometry[4]
+        const rebuilt = rebuildSlide(session, slideIndex)
+        return rebuilt
+          ? { slide: rebuilt, sourceId: el.id }
+          : { error: 'Could not rebuild target slide.' }
       } catch (err) {
-        return { error: err instanceof Error ? err.message : String(err) }
+        return { error: err instanceof Error ? err.message.slice(0, 400) : String(err).slice(0, 400) }
       }
     },
   )
