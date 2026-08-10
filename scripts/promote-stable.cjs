@@ -2,11 +2,11 @@
 /**
  * scripts/promote-stable.cjs — promote an already-published beta build to the
  * stable update channel. No rebuild: the versioned feed archive uploaded at
- * beta-publish time (GenOffice-mac-arm64-<v>.yml / GenOffice-win-<v>.yml) is
+ * beta-publish time (GenOffice-mac-arm64-<v>.yml / Captivela-Office-win-<v>.yml) is
  * re-uploaded as the stable feed (latest-mac.yml / latest.yml). The binaries
  * it points to are already on the CDN under the same prefix.
  *
- * The marketing download aliases (GenOffice.dmg / GenOfficeSetup.exe) also
+ * The marketing download aliases (GenOffice.dmg / CaptivelaOfficeSetup.exe) also
  * track the stable channel: per-merge beta publishes skip them, and this
  * script re-points each alias to the promoted version via a server-side
  * blob copy (no download/re-upload).
@@ -19,7 +19,7 @@
  * platform's beta feed. Guard: refuses to publish a version that is not
  * strictly newer than the current stable feed unless --force is passed.
  *
- * Requires: az CLI + AZURE_STORAGE_CONNECTION_STRING + GENOFFICE_UPDATE_URL
+ * Requires: az CLI + AZURE_STORAGE_CONNECTION_STRING + CAPTIVELA_OFFICE_UPDATE_URL
  * (https://<cdn-host>/<container>/<prefix>, same convention as the upload
  * scripts — container/prefix are derived from its path).
  */
@@ -63,17 +63,17 @@ const PLATFORMS = [
   },
   {
     flag: '--win',
-    archive: (v) => `GenOffice-win-${v}.yml`,
+    archive: (v) => `Captivela-Office-win-${v}.yml`,
     feed: 'latest.yml',
     betaFeed: 'beta.yml',
-    installer: (v) => `GenOfficeSetup-v${v}.exe`,
-    alias: 'GenOfficeSetup.exe',
+    installer: (v) => `Captivela Office Setup ${v}.exe`,
+    alias: 'CaptivelaOfficeSetup.exe',
   },
 ]
 
 function channelTarget() {
-  const raw = process.env.GENOFFICE_UPDATE_URL
-  if (!raw) fatal('GENOFFICE_UPDATE_URL env not set')
+  const raw = process.env.CAPTIVELA_OFFICE_UPDATE_URL || process.env.GENOFFICE_UPDATE_URL
+  if (!raw) fatal('CAPTIVELA_OFFICE_UPDATE_URL env not set')
   const base = raw.replace(/\/+$/, '')
   let segments
   try {
@@ -84,7 +84,7 @@ function channelTarget() {
   const container = segments[0]
   const prefix = segments.slice(1).join('/')
   if (!container || !prefix) {
-    fatal('GENOFFICE_UPDATE_URL must look like https://<cdn-host>/<container>/<prefix>')
+    fatal('CAPTIVELA_OFFICE_UPDATE_URL must look like https://<cdn-host>/<container>/<prefix>')
   }
   return { container, prefix, base }
 }

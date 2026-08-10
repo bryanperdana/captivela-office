@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* global document, getComputedStyle */
+/* global document, getComputedStyle, window */
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
@@ -80,34 +80,149 @@ const home = await page.evaluate(() => {
 })
 await page.screenshot({ path: resolve(output, '02-home.png'), fullPage: true })
 
-const newDocument = page.getByText(/AI Docs|New Document|Dokumen Baru/i).first()
-let docs = null
-if (await newDocument.count()) {
-  await newDocument.click()
-  await page.waitForTimeout(1800)
-  const currentPages = context.pages()
-  const modulePage = currentPages.find((candidate) =>
-    candidate.url().includes('/modules/docs/renderer/index.html'),
+async function inspectModule(kind, action, screenshotName) {
+  await action()
+  const deadline = Date.now() + 15_000
+  let modulePage = null
+  while (!modulePage && Date.now() < deadline) {
+    modulePage =
+      context
+        .pages()
+        .find((candidate) => candidate.url().includes(`/modules/${kind}/renderer/index.html`)) ??
+      null
+    if (!modulePage) await page.waitForTimeout(250)
+  }
+  if (!modulePage) throw new Error(`Packaged ${kind} module page did not open`)
+  modulePage.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type()))
+      consoleMessages.push(`${kind} ${message.type()}: ${message.text()}`)
+  })
+  modulePage.on('pageerror', (error) => pageErrors.push(`${kind}: ${error.message}`))
+  await modulePage.waitForLoadState('domcontentloaded')
+  await modulePage.waitForTimeout(800)
+  const result = await modulePage.evaluate(() => {
+    const text = document.body.innerText
+    const chrome =
+      document.querySelector('.ribbon-tabs') ?? document.querySelector('.captivela-app-chrome')
+    return {
+      title: document.title,
+      bodyText: text.slice(0, 3000),
+      forbidden: ['GenOffice', 'Genspark', 'GenTeam'].filter((term) => text.includes(term)),
+      chrome: Boolean(document.querySelector('.captivela-app-chrome')),
+      chromeFont: chrome ? getComputedStyle(chrome).fontFamily : null,
+      documentFont: document.querySelector('.doc-page')
+        ? getComputedStyle(document.querySelector('.doc-page')).fontFamily
+        : null,
+    }
+  })
+  if (result.forbidden.length)
+    throw new Error(`${kind} exposed forbidden branding: ${result.forbidden}`)
+  await modulePage.screenshot({ path: resolve(output, screenshotName), fullPage: true })
+  return { page: modulePage, result }
+}
+
+const docsInspection = await inspectModule(
+  'docs',
+  () => page.evaluate(() => window.aiOffice.newDoc()),
+  '03-docs.png',
+)
+const sheetsInspection = await inspectModule(
+  'sheets',
+  () => page.evaluate(() => window.aiOffice.newSheet()),
+  '04-sheets.png',
+)
+const slidesInspection = await inspectModule(
+  'slides',
+  () => page.evaluate(() => window.aiOffice.newSlide()),
+  '05-slides.png',
+)
+
+let pdf = null
+if (process.env.CAPTIVELA_QA_PDF) {
+  const pdfInspection = await inspectModule(
+    'pdf',
+    () => page.evaluate((path) => window.aiOffice.openPath(path), process.env.CAPTIVELA_QA_PDF),
+    '06-pdf.png',
   )
-  if (modulePage) {
-    docs = await modulePage.evaluate(() => {
-      const text = document.body.innerText
+  pdf = pdfInspection.result
+}
+
+let syntheticSecretStored = null
+if (process.env.CAPTIVELA_QA_SYNTHETIC_KEY) {
+  syntheticSecretStored = await slidesInspection.page.evaluate(
+    async ({ apiKey, baseUrl }) => {
+      const settings = await window.slidesApi.getAiSettings()
+      const provider = 'custom'
+      const saved = await window.slidesApi.setAiSettings({
+        ...settings,
+        provider,
+        providers: {
+          ...settings.providers,
+          [provider]: { apiKey, model: 'captivela-qa-image', baseUrl },
+        },
+        imageGeneration: {
+          enabled: true,
+          protocol: 'openai-images-v1',
+          model: 'captivela-qa-image',
+          size: '1024x1024',
+          format: 'png',
+        },
+      })
+      const reread = await window.slidesApi.getAiSettings()
+      const imageCheck = await window.slidesApi.testAiImageGeneration({
+        provider,
+        model: 'captivela-qa-image',
+        baseUrl,
+        imageModel: 'captivela-qa-image',
+        imageSize: '1024x1024',
+      })
       return {
-        title: document.title,
-        bodyText: text.slice(0, 3000),
-        forbidden: ['GenOffice', 'Genspark', 'GenTeam'].filter((term) => text.includes(term)),
-        chrome: Boolean(document.querySelector('.captivela-app-chrome')),
-        chromeFont: getComputedStyle(
-          document.querySelector('.ribbon-tabs') ?? document.querySelector('.captivela-app-chrome'),
-        ).fontFamily,
-        documentFont: document.querySelector('.doc-page')
-          ? getComputedStyle(document.querySelector('.doc-page')).fontFamily
-          : null,
+        saveOk: saved.ok,
+        rendererApiKey: reread.providers[provider]?.apiKey ?? null,
+        hasStoredApiKey: reread.providers[provider]?.hasStoredApiKey ?? false,
+        imageCheck,
       }
-    })
-    await modulePage.screenshot({ path: resolve(output, '03-docs.png'), fullPage: true })
+    },
+    {
+      apiKey: process.env.CAPTIVELA_QA_SYNTHETIC_KEY,
+      baseUrl: process.env.CAPTIVELA_QA_IMAGES_BASE_URL,
+    },
+  )
+  if (
+    !syntheticSecretStored.saveOk ||
+    syntheticSecretStored.rendererApiKey ||
+    !syntheticSecretStored.hasStoredApiKey ||
+    !syntheticSecretStored.imageCheck?.ok
+  ) {
+    throw new Error(
+      `Packaged AI settings/image capability QA failed: ${JSON.stringify(syntheticSecretStored)}`,
+    )
   }
 }
 
-console.log(JSON.stringify({ before, home, docs, consoleMessages, pageErrors, output }, null, 2))
+if (before.forbidden.length || home.forbidden.length)
+  throw new Error(
+    `Packaged shell exposed forbidden branding: ${[...before.forbidden, ...home.forbidden]}`,
+  )
+if (consoleMessages.length || pageErrors.length)
+  throw new Error(`Packaged renderer errors: ${JSON.stringify({ consoleMessages, pageErrors })}`)
+
+console.log(
+  JSON.stringify(
+    {
+      before,
+      home,
+      docs: docsInspection.result,
+      sheets: sheetsInspection.result,
+      slides: slidesInspection.result,
+      pdf,
+      syntheticSecretStored,
+      consoleMessages,
+      pageErrors,
+      output,
+    },
+    null,
+    2,
+  ),
+)
 await browser.close()

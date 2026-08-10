@@ -3,7 +3,7 @@
  * auto-update feed URL can be injected at build time instead of living in
  * the repo).
  *
- * GENOFFICE_UPDATE_URL — public base URL of the update channel (the generic
+ * CAPTIVELA_OFFICE_UPDATE_URL — public base URL of the update channel (the generic
  * provider prefix that serves latest.yml / latest-mac.yml). Required for
  * release builds; CI provides it as a repository secret. For local release
  * builds put it in apps/shell/electron-builder.env (gitignored) — the
@@ -22,6 +22,7 @@
 
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
+const { verifyWindowsPackageInputs } = require('../../tools/windows-package-inputs.cjs')
 
 const updateUrl = process.env.CAPTIVELA_OFFICE_UPDATE_URL || process.env.GENOFFICE_UPDATE_URL
 const releaseSigning = process.env.CAPTIVELA_OFFICE_RELEASE_SIGNING === '1'
@@ -126,6 +127,7 @@ const config = {
     },
   ],
   npmRebuild: false,
+  forceCodeSigning: releaseSigning,
   mac: {
     target: ['dmg', 'zip'],
     category: 'public.app-category.productivity',
@@ -146,6 +148,8 @@ const config = {
     ],
   },
   win: {
+    icon: 'build/icon.ico',
+    artifactName: 'Captivela Office Setup ${version}.${ext}',
     target: [
       {
         target: 'nsis',
@@ -154,7 +158,7 @@ const config = {
     ],
     extraResources: [
       {
-        from: '../sheets/native/xlsx-engine/target/x86_64-pc-windows-gnu/release/xlsx-sidecar.exe',
+        from: '../sheets/native/xlsx-engine/target/x86_64-pc-windows-msvc/release/xlsx-sidecar.exe',
         to: 'native/xlsx-sidecar.exe',
       },
     ],
@@ -195,9 +199,13 @@ const config = {
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
+    shortcutName: 'Captivela Office',
+    uninstallDisplayName: 'Captivela Office',
   },
-  beforePack: async () => {
+  beforePack: async (context) => {
     assertModuleTreesPresent()
+    if (context.electronPlatformName === 'win32')
+      verifyWindowsPackageInputs({ root: join(__dirname, '../..') })
   },
   dmg: {
     sign: releaseSigning,

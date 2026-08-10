@@ -16,7 +16,7 @@ import { closeUpdateWindow, pushUpdateState, showUpdateWindow } from './update-w
  * the update channel prefix (production builds only). The packaged app reads
  * that URL from resources/app-update.yml, which electron-builder bakes in
  * from the `publish` config in apps/shell/electron-builder.cjs — the URL
- * itself is injected at build time via the GENOFFICE_UPDATE_URL env var and
+ * itself is injected at build time via the CAPTIVELA_OFFICE_UPDATE_URL env var and
  * is intentionally not committed to the repo.
  *
  * UX is the strong-guidance modal card (update-window.ts), not a native

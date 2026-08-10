@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "start": "electron-vite build && electron .",
     "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win",
+    "pack:win:x64": "electron-vite build && electron-builder --win dir --x64",
+    "dist:win": "electron-vite build && electron-builder --win nsis --x64",
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "devDependencies": {

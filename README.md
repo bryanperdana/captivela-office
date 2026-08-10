@@ -10,17 +10,9 @@ around AI editing as a first-class workflow rather than a bolted-on chat box.
 
 ## Download
 
-Signed installers built from `main`:
-
-- **macOS** (Apple Silicon): [GenOffice-0.5.83-arm64.dmg](https://github.com/genspark-ai/genoffice/releases/download/v0.5.83/GenOffice-0.5.83-arm64.dmg)
-- **Windows** (x64): [GenOfficeSetup-v0.5.79.exe](https://github.com/genspark-ai/genoffice/releases/download/v0.5.83/GenOfficeSetup-v0.5.79.exe)
-
-Previous version:
-
-- **macOS** (Apple Silicon): [GenOffice-0.5.1-arm64.dmg](https://github.com/genspark-ai/genoffice/releases/download/v0.5.1/GenOffice-0.5.1-arm64.dmg)
-- **Windows** (x64): [GenOfficeSetup-v0.5.1.exe](https://github.com/genspark-ai/genoffice/releases/download/v0.5.1/GenOfficeSetup-v0.5.1.exe)
-
-Other versions are on the [Releases](https://github.com/genspark-ai/genoffice/releases) page.
+Captivela Office release artifacts are produced by the platform release workflows.
+The canonical Windows x64 installer is named `Captivela Office Setup <version>.exe`;
+public distribution requires a valid Authenticode signature.
 
 ## Apps
 
