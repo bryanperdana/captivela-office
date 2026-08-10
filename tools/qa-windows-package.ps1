@@ -27,7 +27,7 @@ foreach ($path in $required) {
 
 $probeLine = '{"version":1,"requestId":"windows-qa-probe","command":"archive_manifest","path":"Z:\\captivela-qa-missing.xlsx"}'
 $probeOutput = $probeLine | & $sidecar 2>&1
-if ($LASTEXITCODE -ne 0) { throw "XLSX sidecar protocol probe exited $LASTEXITCODE: $probeOutput" }
+if ($LASTEXITCODE -ne 0) { throw "XLSX sidecar protocol probe exited ${LASTEXITCODE}: $probeOutput" }
 try { $probe = ($probeOutput | Select-Object -First 1) | ConvertFrom-Json } catch {
   throw "XLSX sidecar did not return JSON: $probeOutput"
 }
