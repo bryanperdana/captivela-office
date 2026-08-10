@@ -179,7 +179,7 @@ if (process.env.CAPTIVELA_QA_SYNTHETIC_KEY) {
       return {
         saveOk: saved.ok,
         rendererApiKey: reread.providers[provider]?.apiKey ?? null,
-        hasStoredApiKey: reread.providers[provider]?.hasStoredApiKey ?? false,
+        hasStoredApiKey: reread.apiKeyPresent?.[provider] ?? false,
         imageCheck,
       }
     },

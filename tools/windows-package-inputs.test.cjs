@@ -81,3 +81,10 @@ test('Windows promotion uses Captivela-only artifact and alias names', () => {
   assert.match(combined, /Captivela Office Setup/)
   assert.match(combined, /CaptivelaOfficeSetup\.exe/)
 })
+
+test('packaged QA reads the canonical renderer stored-key marker', () => {
+  const root = resolve(__dirname, '..')
+  const harness = readFileSync(join(root, 'tools/qa-packaged-captivela.mjs'), 'utf8')
+  assert.match(harness, /reread\.apiKeyPresent\?\.\[provider\]/)
+  assert.doesNotMatch(harness, /providers\[provider\].*hasStoredApiKey/)
+})
