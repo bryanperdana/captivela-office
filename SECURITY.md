@@ -2,10 +2,29 @@
 
 ## Reporting a Vulnerability
 
-Please report suspected vulnerabilities privately via GitHub's
-[private vulnerability reporting](https://github.com/genspark-ai/genoffice/security/advisories/new)
-on this repository. Do not open public issues for security reports. We aim to
-acknowledge reports within 72 hours.
+Please report suspected vulnerabilities privately through GitHub's private
+vulnerability reporting for the Captivela Office repository. Until this private
+staging repository is published, contact the repository owner through GitHub
+instead of opening a public issue. We aim to acknowledge reports within 72
+hours.
+
+Do not include real API keys, access tokens, private documents, or other
+sensitive user data in a report. Use synthetic credentials and redacted sample
+files whenever possible.
+
+## Supported Versions
+
+Captivela Office 0.5.x is a developer preview. Security fixes are applied to
+the latest commit on the active release branch; older preview artifacts are not
+guaranteed to receive backports.
+
+## Binary Trust Status
+
+The 0.5.0 preview installers are not yet Authenticode-signed (Windows) or
+Developer ID-signed and notarized (macOS). Source availability does not make an
+unsigned binary trusted. Download artifacts only from the official GitHub
+Release, compare the published SHA-256 value, and do not disable Gatekeeper or
+Windows security globally.
 
 ## Process Security Posture
 

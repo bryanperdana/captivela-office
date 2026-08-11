@@ -1,35 +1,49 @@
-# GenOffice
+# Captivela Office
 
-An AI-native office suite for macOS and Windows: word processor, spreadsheet,
-presentations, and PDF — five Electron apps sharing one engine layer, built
-around AI editing as a first-class workflow rather than a bolted-on chat box.
+Captivela Office is an open-source, AI-native office suite for macOS and
+Windows. It combines document, spreadsheet, presentation, and PDF tools in one
+Electron application and supports user-configured OpenAI-compatible providers.
 
-[![Meet GenOffice — the world's first full-featured open-source AI Office (video)](https://img.youtube.com/vi/B2pLdMX95v4/maxresdefault.jpg)](https://www.youtube.com/watch?v=B2pLdMX95v4)
+This project is a rebranded fork of
+[GenOffice](https://github.com/genspark-ai/genoffice). See
+[MODIFICATIONS.md](MODIFICATIONS.md) for the fork history and material changes.
 
-[Watch the demo video on YouTube](https://www.youtube.com/watch?v=B2pLdMX95v4)
+> **Developer preview:** version 0.5.0 is intended for developers and technical
+> early adopters. Current installers are unsigned. The Windows build has passed
+> native package/runtime QA, but neither platform should yet be presented as a
+> trusted consumer release.
 
-## Download
+## Download and installation
 
-Captivela Office release artifacts are produced by the platform release workflows.
-The canonical Windows x64 installer is named `Captivela Office Setup <version>.exe`;
-public distribution requires a valid Authenticode signature.
+Release artifacts should be downloaded only from this repository's GitHub
+Releases page. Verify the published SHA-256 value before bypassing an operating
+system warning.
+
+- Windows x64: `Captivela Office Setup <version>.exe`
+- macOS Apple Silicon: `Captivela Office-<version>-arm64.dmg`
+
+See [INSTALLATION.md](INSTALLATION.md) for Windows SmartScreen guidance, macOS
+DMG integrity checks, and the narrowly scoped workaround for an intact but
+unsigned macOS application. Checksums for verified artifacts are recorded in
+[RELEASES.md](RELEASES.md).
 
 ## Apps
 
 | App           | Product              | What it is                                                                                                                                                                                                                                                                                                                                                    |
 | ------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/docs`   | **GenOffice Docs**   | `.docx` word processor. Byte-preserving round trip: only dirty paragraphs are regenerated (paragraph patch), everything else in the original file is kept byte-for-byte, so opening and saving never breaks layout in Word. Paginated view whose line metrics reproduce the original document's layout, tracked changes, comments, styles, equations, ink.    |
-| `apps/sheets` | **GenOffice Sheets** | `.xlsx` spreadsheet. UI built on the open-source [Univer](https://github.com/dream-num/univer) core (Apache-2.0) with a large layer of in-house extensions; `.xlsx` import/export runs through an in-house Rust sidecar (calamine + IronCalc), charts are rendered in-house (Konva), plus pivot tables, slicers, conditional formatting, and formula tracing. |
-| `apps/slides` | **GenOffice Slides** | `.pptx` presentations. In-house `.pptx` parse/render/edit engine with masters, charts, cropping, ink, and text shaping (HarfBuzz metrics).                                                                                                                                                                                                                    |
-| `apps/pdf`    | **GenOffice PDF**    | `.pdf` viewer/editor on pdf.js + pdf-lib: annotations, forms, outlines, stamps, signatures, page operations, and printing support.                                                                                                                                                                                                                            |
-| `apps/shell`  | **GenOffice**        | The suite shell: home screen, tabbed hosting of the four editors, auto-update.                                                                                                                                                                                                                                                                                |
+| `apps/docs`   | **Captivela Docs**   | `.docx` word processor. Byte-preserving round trip: only dirty paragraphs are regenerated (paragraph patch), everything else in the original file is kept byte-for-byte, so opening and saving never breaks layout in Word. Paginated view whose line metrics reproduce the original document's layout, tracked changes, comments, styles, equations, ink.    |
+| `apps/sheets` | **Captivela Sheets** | `.xlsx` spreadsheet. UI built on the open-source [Univer](https://github.com/dream-num/univer) core (Apache-2.0) with a large layer of in-house extensions; `.xlsx` import/export runs through an in-house Rust sidecar (calamine + IronCalc), charts are rendered in-house (Konva), plus pivot tables, slicers, conditional formatting, and formula tracing. |
+| `apps/slides` | **Captivela Slides** | `.pptx` presentations. In-house `.pptx` parse/render/edit engine with masters, charts, cropping, ink, and text shaping (HarfBuzz metrics).                                                                                                                                                                                                                    |
+| `apps/pdf`    | **Captivela PDF**    | `.pdf` viewer/editor on pdf.js + pdf-lib: annotations, forms, outlines, stamps, signatures, page operations, and printing support.                                                                                                                                                                                                                            |
+| `apps/shell`  | **Captivela Office** | The suite shell: home screen and tabbed hosting of the four editors. Public auto-update is disabled unless a release update URL is explicitly configured.                                                                                                                                                                                                     |
 
 Every app embeds the same AI panel: block-granular AI editing with version
 snapshots and diffs in docs, a tool-calling agent over workbook/slide/PDF
 state in the others.
 
-**AI providers.** The apps sign in to a Genspark account and route model
-calls through the Genspark service side; no model API key is stored locally.
+**AI providers.** The apps support user-configured OpenAI-compatible providers.
+API keys are encrypted through Electron `safeStorage` and resolved by the
+trusted main process; renderer processes receive only a stored-key marker.
 
 ## Engine packages
 
@@ -52,6 +66,13 @@ All pure TypeScript, no Electron dependency, unit-tested (except the UI kit):
 
 ## Development
 
+Prerequisites:
+
+- Node.js 20 and npm 10 or newer
+- Rust stable (`cargo` on `PATH`) for the Sheets XLSX sidecar
+- Xcode Command Line Tools for macOS packaging
+- Windows/MSVC runner for an authoritative Windows x64 installer build
+
 ```bash
 npm install
 npm run fixtures     # generate test .docx fixtures
@@ -66,6 +87,11 @@ npm run dist:win     # package Windows nsis installer
 The sheets app additionally needs a Rust toolchain for its xlsx sidecar
 (`cargo` on PATH); `npm run build -w @genoffice/sheets` compiles it
 automatically.
+
+For deterministic CI installation use `npm ci`. The Windows release workflow
+is [`.github/workflows/windows-build.yml`](.github/workflows/windows-build.yml).
+Unsigned runs are contributor/developer-preview builds; signed runs fail closed
+unless the required signing credentials are configured.
 
 Local UI/e2e driver scripts (Playwright + Electron, for local acceptance, not
 committed by default) live in [`scripts/drivers/`](scripts/drivers/README.md).
@@ -101,7 +127,7 @@ CJK subsets) are OFL/Apache.
 
 ## License
 
-GenOffice is licensed under the [Apache License 2.0](LICENSE), with one
+Captivela Office is licensed under the [Apache License 2.0](LICENSE), with one
 exception: the `ee/` directory is reserved for future enterprise modules and
 is covered by the [GenOffice Enterprise License](ee/LICENSE).
 
