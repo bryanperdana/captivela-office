@@ -1,16 +1,31 @@
+// @vitest-environment node
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PDFArray, PDFDict, PDFDocument, PDFName } from 'pdf-lib'
 import {
   applySaveRequest,
   extractPagesBytes,
+  insertPdfIntoPath,
   insertPdfBytes,
   savePdfToPath,
 } from '../src/main/save-pdf'
 import type { SavePdfRequest } from '../src/shared/ipc'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
+
+const locked = () => Object.assign(new Error('EACCES: PDF is locked'), { code: 'EACCES' })
+
+beforeEach(async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  vi.mocked(rename).mockReset().mockImplementation(actual.rename)
+})
 
 /** 1x1 red pixel PNG */
 const TINY_PNG =
@@ -83,6 +98,41 @@ describe('insertPdfBytes', () => {
   })
 })
 
+describe('insertPdfIntoPath', () => {
+  it('retries transient Windows promotion failures', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gen-pdf-insert-'))
+    const target = join(dir, 'target.pdf')
+    const other = join(dir, 'other.pdf')
+    writeFileSync(target, await makePdf([[100, 100]]))
+    writeFileSync(other, await makePdf([[200, 200]]))
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(rename).mockRejectedValueOnce(locked()).mockImplementation(actual.rename)
+
+    await expect(insertPdfIntoPath(target, other, 0, { retryDelayMs: 0 })).resolves.toBe(1)
+
+    expect(rename).toHaveBeenCalledTimes(2)
+    expect((await PDFDocument.load(readFileSync(target))).getPageCount()).toBe(2)
+    expect(readdirSync(dir).sort()).toEqual(['other.pdf', 'target.pdf'])
+  })
+
+  it('preserves the original after persistent promotion failure', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gen-pdf-insert-'))
+    const target = join(dir, 'target.pdf')
+    const other = join(dir, 'other.pdf')
+    writeFileSync(target, await makePdf([[100, 100]]))
+    writeFileSync(other, await makePdf([[200, 200]]))
+    const original = createHash('sha256').update(readFileSync(target)).digest('hex')
+    vi.mocked(rename).mockRejectedValue(locked())
+
+    await expect(
+      insertPdfIntoPath(target, other, 0, { maxRetries: 1, retryDelayMs: 0 }),
+    ).rejects.toMatchObject({ operation: 'promote', code: 'EACCES', attempts: 2 })
+
+    expect(createHash('sha256').update(readFileSync(target)).digest('hex')).toBe(original)
+    expect(readdirSync(dir).sort()).toEqual(['other.pdf', 'target.pdf'])
+  })
+})
+
 describe('savePdfToPath', () => {
   const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
   const highlight = {
@@ -121,6 +171,21 @@ describe('savePdfToPath', () => {
 
     const out = await PDFDocument.load(new Uint8Array(readFileSync(src)))
     expect(pageAnnots(out, 0).map(subtypeOf)).toEqual(['Highlight'])
+    expect(readdirSync(dir)).toEqual(['doc.pdf'])
+  })
+
+  it('preserves the original when Windows keeps rejecting promotion', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gen-pdf-'))
+    const src = join(dir, 'doc.pdf')
+    writeFileSync(src, await makePdf([[612, 792]]))
+    const original = sha256(src)
+    vi.mocked(rename).mockRejectedValue(locked())
+
+    await expect(
+      savePdfToPath(src, src, request({ path: src, markups: [highlight] })),
+    ).rejects.toMatchObject({ operation: 'promote', code: 'EACCES' })
+
+    expect(sha256(src)).toBe(original)
     expect(readdirSync(dir)).toEqual(['doc.pdf'])
   })
 

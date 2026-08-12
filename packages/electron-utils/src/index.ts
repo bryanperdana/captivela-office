@@ -24,6 +24,15 @@ export { fetchRemoteImage, remoteImageHeaders } from './remote-image'
 export { createAiSettingsStore } from './ai-settings-store'
 export type { AiSettingsStore, AiSettingsStoreOptions, SecretCipher } from './ai-settings-store'
 export {
+  AtomicFileSaveError,
+  atomicWriteFile,
+  atomicWriteFileWithWriter,
+  promoteFileAtomically,
+  type AtomicFileOperation,
+  type AtomicFileOptions,
+  type AtomicWriteFileOptions,
+} from './atomic-file'
+export {
   clearApiKeyFromRenderer,
   getSettingsForRenderer,
   redactRequestError,

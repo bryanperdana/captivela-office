@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
+import { atomicWriteFileWithWriter } from '@genoffice/electron-utils'
 import { z } from 'zod'
 
 import type { WorkbookChartEdit, WorkbookVisualEdit } from '../shared/desktop-api'
@@ -135,7 +135,6 @@ export async function saveWorkbookViaSidecar(
   request: StreamingSaveRequest,
 ): Promise<StreamingSaveResult> {
   const workDir = await mkdtemp(join(tmpdir(), 'ai-excel-save-'))
-  const temporaryTarget = join(dirname(request.targetPath), `.${randomUUID()}.tmp.xlsx`)
   try {
     const manifest = manifestResultSchema.parse(
       await request.client.archiveManifest(request.sourcePath),
@@ -170,32 +169,29 @@ export async function saveWorkbookViaSidecar(
       ...(await writePlanContents(workDir, 'add', plan.added)),
       ...(await writePlanContents(workDir, 'add-bin', plan.addedBinary)),
     ]
-    const result = saveArchiveResultSchema.parse(
-      await request.client.saveArchive({
-        sourcePath: request.sourcePath,
-        targetPath: temporaryTarget,
-        replacements,
-        removals: plan.removedEntries,
-        additions,
-      }),
-    )
+    await atomicWriteFileWithWriter(request.targetPath, async (temporaryTarget) => {
+      const result = saveArchiveResultSchema.parse(
+        await request.client.saveArchive({
+          sourcePath: request.sourcePath,
+          targetPath: temporaryTarget,
+          replacements,
+          removals: plan.removedEntries,
+          additions,
+        }),
+      )
 
-    // The source manifest was read before planning; if the file changed on
-    // disk in between, the save's own before-manifest exposes the drift.
-    if (!manifestsEqual(manifest, result.beforeEntries)) {
-      throw new Error('The workbook changed on disk while saving — aborted.')
-    }
-    assertManifestPreserved(plan, result.beforeEntries, result.afterEntries)
-
-    await promoteFileAtomically(temporaryTarget, request.targetPath)
+      // The source manifest was read before planning; if the file changed on
+      // disk in between, the save's own before-manifest exposes the drift.
+      if (!manifestsEqual(manifest, result.beforeEntries)) {
+        throw new Error('The workbook changed on disk while saving — aborted.')
+      }
+      assertManifestPreserved(plan, result.beforeEntries, result.afterEntries)
+    })
     return {
       touchedEntries: plan.touchedEntries,
       removedEntries: plan.removedEntries,
       addedEntries: plan.addedEntries,
     }
-  } catch (error: unknown) {
-    await rm(temporaryTarget, { force: true })
-    throw error
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }
@@ -317,14 +313,4 @@ export function assertManifestPreserved(
       throw new Error(`Saving would unexpectedly create ${entry.name} — aborted.`)
     }
   }
-}
-
-async function promoteFileAtomically(temporaryPath: string, path: string): Promise<void> {
-  const handle = await open(temporaryPath, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-  await rename(temporaryPath, path)
 }

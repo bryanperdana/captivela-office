@@ -15,9 +15,15 @@ on:
     paths:
       - '.github/workflows/windows-build.yml'
       - 'apps/shell/**'
-      - 'apps/sheets/native/**'
+      - 'apps/docs/**'
+      - 'apps/pdf/**'
+      - 'apps/sheets/**'
+      - 'apps/slides/**'
+      - 'packages/electron-utils/**'
+      - 'packages/pptx-engine/**'
       - 'tools/windows-*'
       - 'tools/qa-windows-package.ps1'
+      - 'tools/qa-packaged-captivela.mjs'
       - 'package.json'
       - 'package-lock.json'
 

@@ -1,4 +1,5 @@
-import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import { atomicWriteFile, type AtomicWriteFileOptions } from '@genoffice/electron-utils'
 import {
   PDFArray,
   PDFBool,
@@ -311,6 +312,22 @@ export async function insertPdfBytes(
   return { merged: await dst.save({ useObjectStreams: false }), count: copied.length }
 }
 
+/** Merge another PDF into an existing file and preserve the original unless promotion succeeds. */
+export async function insertPdfIntoPath(
+  targetPath: string,
+  otherPath: string,
+  afterPageIndex: number,
+  options: AtomicWriteFileOptions = {},
+): Promise<number> {
+  const { merged, count } = await insertPdfBytes(
+    new Uint8Array(await readFile(targetPath)),
+    new Uint8Array(await readFile(otherPath)),
+    afterPageIndex,
+  )
+  await atomicWriteFile(targetPath, merged, { ...options, allowInPlaceFallback: false })
+  return count
+}
+
 function applyMetadata(pdfDoc: PDFDocument, meta: MetadataInput): void {
   if (meta.title !== undefined) pdfDoc.setTitle(meta.title)
   if (meta.author !== undefined) pdfDoc.setAuthor(meta.author)
@@ -339,14 +356,7 @@ export async function savePdfToPath(
   request: SavePdfRequest,
 ): Promise<void> {
   const bytes = await applySaveRequest(new Uint8Array(await readFile(sourcePath)), request)
-  const tmp = `${targetPath}.gensave-${process.pid}.tmp`
-  try {
-    await writeFile(tmp, bytes)
-    await rename(tmp, targetPath)
-  } catch (err) {
-    await rm(tmp, { force: true })
-    throw err
-  }
+  await atomicWriteFile(targetPath, bytes, { allowInPlaceFallback: false })
 }
 
 /** Apply markups + form values + page ops, returning new bytes. Original objects are not reordered (pdf-lib keeps untouched objects). */

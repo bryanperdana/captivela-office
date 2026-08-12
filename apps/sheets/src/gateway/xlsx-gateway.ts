@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 
+import { atomicWriteFile, type AtomicWriteFileOptions } from '@genoffice/electron-utils'
 import JSZip from 'jszip'
 
 import type {
@@ -1350,21 +1350,12 @@ export function toA1Address(row: number, column: number): string {
   return `${letters}${row + 1}`
 }
 
-export async function writeXlsxAtomically(path: string, buffer: Buffer): Promise<void> {
-  const temporaryPath = join(dirname(path), `.${crypto.randomUUID()}.tmp.xlsx`)
-  try {
-    await writeFile(temporaryPath, buffer, { flag: 'wx' })
-    const handle = await open(temporaryPath, 'r')
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-    await rename(temporaryPath, path)
-  } catch (error: unknown) {
-    await rm(temporaryPath, { force: true })
-    throw error
-  }
+export async function writeXlsxAtomically(
+  path: string,
+  buffer: Buffer,
+  options: AtomicWriteFileOptions = {},
+): Promise<void> {
+  await atomicWriteFile(path, buffer, { ...options, allowInPlaceFallback: false })
 }
 
 export async function mutateXlsxFile(

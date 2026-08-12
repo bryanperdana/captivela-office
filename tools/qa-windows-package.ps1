@@ -77,8 +77,25 @@ try {
   $env:CAPTIVELA_CDP = "http://127.0.0.1:9333"
   $env:CAPTIVELA_QA_OUTPUT = (Resolve-Path $OutputDir).Path
   $env:CAPTIVELA_QA_PDF = $qaPdf
-  node tools/qa-packaged-captivela.mjs | Tee-Object -FilePath (Join-Path $OutputDir "runtime.json")
+  $runtimePath = Join-Path $OutputDir "runtime.json"
+  node tools/qa-packaged-captivela.mjs | Tee-Object -FilePath $runtimePath
   if ($LASTEXITCODE -ne 0) { throw "Packaged Playwright QA failed" }
+  try { $runtimeReport = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json } catch {
+    throw "Packaged Playwright QA did not produce a valid runtime report: $($_.Exception.Message)"
+  }
+  $requiredRuntimeTrue = @(
+    "sheetsExistingOverwrite",
+    "sheetsHashChanged",
+    "sheetsZipParseable",
+    "sheetsDiskMarker",
+    "sheetsReopenVisible"
+  )
+  foreach ($field in $requiredRuntimeTrue) {
+    if ($runtimeReport.$field -ne $true) { throw "Packaged XLSX gate field must be true: $field" }
+  }
+  if ($runtimeReport.tempFilesLeft -ne 0) {
+    throw "Packaged XLSX gate left $($runtimeReport.tempFilesLeft) sibling temporary file(s)"
+  }
 } finally {
   if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
   if ($mockProcess -and -not $mockProcess.HasExited) { Stop-Process -Id $mockProcess.Id -Force }
@@ -143,6 +160,12 @@ $report = [ordered]@{
   sidecarProbeErrorCode = $probe.error.code
   modules = @("docs", "sheets", "slides", "pdf")
   runtimeCdp = $true
+  sheetsExistingOverwrite = $runtimeReport.sheetsExistingOverwrite
+  sheetsHashChanged = $runtimeReport.sheetsHashChanged
+  sheetsZipParseable = $runtimeReport.sheetsZipParseable
+  sheetsDiskMarker = $runtimeReport.sheetsDiskMarker
+  sheetsReopenVisible = $runtimeReport.sheetsReopenVisible
+  tempFilesLeft = $runtimeReport.tempFilesLeft
   installerLifecycle = $true
 }
 $report | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $OutputDir "package-report.json")

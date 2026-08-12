@@ -1,14 +1,47 @@
-import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
+import {
+  createWriteStream,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { Writable } from 'node:stream'
 import JSZip from 'jszip'
 import { openPptx, savePptx, savePptxToFile, commitSaved, addElement } from '../src/index'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, createWriteStream: vi.fn(actual.createWriteStream) }
+})
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
 
 const here = dirname(fileURLToPath(import.meta.url))
 const fx = (name: string) => readFileSync(join(here, 'fixtures', name))
 const out = () => join(mkdtempSync(join(tmpdir(), 'save-stream-')), 'out.pptx')
+const locked = () => Object.assign(new Error('EBUSY: deck is locked'), { code: 'EBUSY' })
+const directories: string[] = []
+
+beforeEach(async () => {
+  const actualFs = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const actualPromises =
+    await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  vi.mocked(createWriteStream).mockReset().mockImplementation(actualFs.createWriteStream)
+  vi.mocked(rename).mockReset().mockImplementation(actualPromises.rename)
+})
+
+afterEach(() => {
+  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
+})
 
 describe('savePptxToFile', () => {
   it('writes a package that reopens with the same slides as the in-memory save', async () => {
@@ -94,6 +127,44 @@ describe('savePptxToFile', () => {
 })
 
 describe('savePptxToFile error containment', () => {
+  it('preserves the original and cleans the temp when streaming fails', async () => {
+    const opened = await openPptx(fx('01_standard_business.pptx'))
+    const directory = mkdtempSync(join(tmpdir(), 'save-stream-failure-'))
+    directories.push(directory)
+    const target = join(directory, 'deck.pptx')
+    writeFileSync(target, 'original')
+    vi.mocked(createWriteStream).mockReturnValueOnce(
+      new Writable({
+        write(_chunk, _encoding, callback) {
+          callback(new Error('simulated disk write failure'))
+        },
+      }) as ReturnType<typeof createWriteStream>,
+    )
+
+    await expect(savePptxToFile(opened, target)).rejects.toMatchObject({ operation: 'write-temp' })
+
+    expect(readFileSync(target, 'utf8')).toBe('original')
+    expect(readdirSync(directory)).toEqual(['deck.pptx'])
+  })
+
+  it('preserves the original after persistent promotion failure', async () => {
+    const opened = await openPptx(fx('01_standard_business.pptx'))
+    const directory = mkdtempSync(join(tmpdir(), 'save-promotion-failure-'))
+    directories.push(directory)
+    const target = join(directory, 'deck.pptx')
+    writeFileSync(target, 'original')
+    vi.mocked(rename).mockRejectedValue(locked())
+
+    await expect(savePptxToFile(opened, target)).rejects.toMatchObject({
+      operation: 'promote',
+      code: 'EBUSY',
+      attempts: 5,
+    })
+
+    expect(readFileSync(target, 'utf8')).toBe('original')
+    expect(readdirSync(directory)).toEqual(['deck.pptx'])
+  })
+
   it('rejects instead of throwing past the caller when the target is unwritable', async () => {
     const opened = await openPptx(fx('01_standard_business.pptx'))
     let uncaught: unknown = null

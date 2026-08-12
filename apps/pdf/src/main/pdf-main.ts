@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell } from 'electron'
 import type { WebContents } from 'electron'
@@ -21,7 +21,7 @@ import type {
   SavePdfRequest,
   SavePdfResult,
 } from '../shared/ipc'
-import { extractPagesBytes, insertPdfBytes, savePdfToPath } from './save-pdf'
+import { extractPagesBytes, insertPdfIntoPath, savePdfToPath } from './save-pdf'
 
 const tDlg = createI18n({
   zh: {
@@ -440,14 +440,11 @@ function registerPdfIpc(): void {
       const other = picked.filePaths[0]
       if (picked.canceled || !other) return { ok: true, canceled: true }
       try {
-        const { merged, count } = await insertPdfBytes(
-          new Uint8Array(await readFile(path)),
-          new Uint8Array(await readFile(other)),
+        const count = await insertPdfIntoPath(
+          path,
+          other,
           typeof afterPageIndex === 'number' ? afterPageIndex : -1,
         )
-        const tmp = `${path}.gensave-${process.pid}.tmp`
-        await writeFile(tmp, merged)
-        await rename(tmp, path)
         return { ok: true, insertedCount: count }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
