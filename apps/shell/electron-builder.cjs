@@ -50,7 +50,7 @@ function assertModuleTreesPresent() {
 const config = {
   appId: 'com.captivela.office',
   productName: 'Captivela Office',
-  electronVersion: '41.7.1',
+  electronVersion: '41.10.5',
   directories: {
     output: 'release',
   },
@@ -130,6 +130,7 @@ const config = {
   forceCodeSigning: releaseSigning,
   mac: {
     target: ['dmg', 'zip'],
+    artifactName: 'Captivela Office-${version}-${arch}.${ext}',
     category: 'public.app-category.productivity',
     // Signing, the hardened runtime and notarization only apply to a release
     // build. `identity: null` is what makes electron-builder skip codesigning

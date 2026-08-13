@@ -5,7 +5,7 @@
   "description": "AI-native office suite (docs, sheets, slides, pdf)",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20",
+    "node": ">=22.13.0",
     "npm": ">=10"
   },
   "repository": {
@@ -44,7 +44,12 @@
   "dependencies": {
     "ws": "^8.21.1"
   },
+  "overrides": {
+    "js-yaml": "4.3.1",
+    "nanoid": "5.1.16"
+  },
   "devDependencies": {
+    "@electron-internal/extract-zip": "1.0.5",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "concurrently": "^9.2.4",

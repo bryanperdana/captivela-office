@@ -1,0 +1,280 @@
+name: macOS Apple Silicon Build
+
+on:
+  workflow_call:
+    secrets:
+      MAC_CSC_LINK:
+        required: false
+      MAC_CSC_KEY_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+    inputs:
+      signed:
+        description: 'Require Developer ID signing and Apple notarization'
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: 'Exact commit to package'
+        required: false
+        type: string
+        default: ''
+      expected_commit:
+        description: 'Commit SHA that checkout must resolve to'
+        required: false
+        type: string
+        default: ''
+      version:
+        description: 'Expected application version'
+        required: false
+        type: string
+        default: ''
+      artifact_key:
+        description: 'Stable artifact-name suffix for callers'
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      signed:
+        description: 'Require Developer ID signing and Apple notarization'
+        required: true
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/macos-build.yml'
+      - 'apps/shell/**'
+      - 'apps/docs/**'
+      - 'apps/pdf/**'
+      - 'apps/sheets/**'
+      - 'apps/slides/**'
+      - 'packages/electron-utils/**'
+      - 'packages/pptx-engine/**'
+      - 'tools/verify-release-assets*'
+      - 'package.json'
+      - 'package-lock.json'
+
+concurrency:
+  group: macos-arm64-${{ github.ref }}-${{ inputs.artifact_key || 'build' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # GitHub documents macos-14 as a standard M1/arm64 hosted runner for both
+    # public and private repositories. Do not replace it with an Intel label.
+    runs-on: macos-14
+    timeout-minutes: 75
+    env:
+      SIGNED_RELEASE: ${{ inputs.signed || false }}
+      CAPTIVELA_OFFICE_RELEASE_SIGNING: ${{ inputs.signed && '1' || '0' }}
+      CSC_IDENTITY_AUTO_DISCOVERY: ${{ inputs.signed && 'true' || 'false' }}
+      CSC_LINK: ${{ inputs.signed && secrets.MAC_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ inputs.signed && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ inputs.signed && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ inputs.signed && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ inputs.signed && secrets.APPLE_TEAM_ID || '' }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify source identity and Apple Silicon host
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          actual_commit=$(git rev-parse HEAD)
+          actual_version=$(node -p "require('./apps/shell/package.json').version")
+          test "$(uname -m)" = "arm64"
+          if [ -n "$EXPECTED_COMMIT" ] && [ "$actual_commit" != "$EXPECTED_COMMIT" ]; then
+            echo "checked out $actual_commit, expected $EXPECTED_COMMIT" >&2
+            exit 1
+          fi
+          if [ -n "$EXPECTED_VERSION" ] && [ "$actual_version" != "$EXPECTED_VERSION" ]; then
+            echo "package version $actual_version, expected $EXPECTED_VERSION" >&2
+            exit 1
+          fi
+          printf 'commit=%s\nversion=%s\nrunner_arch=%s\n' \
+            "$actual_commit" "$actual_version" "$(uname -m)" | tee build-source.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch, 2026-07
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin
+
+      - name: Cache cargo (xlsx-sidecar)
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: apps/sheets/native/xlsx-engine
+          key: macos-arm64
+
+      - name: Require all Apple credentials for signed runs
+        if: env.SIGNED_RELEASE == 'true'
+        run: |
+          set -euo pipefail
+          for variable in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!variable:-}" ]; then
+              echo "Signed macOS release requested but required secret $variable is missing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Assert unsigned preview configuration
+        if: env.SIGNED_RELEASE != 'true'
+        run: |
+          set -euo pipefail
+          test "$CAPTIVELA_OFFICE_RELEASE_SIGNING" = "0"
+          test "$CSC_IDENTITY_AUTO_DISCOVERY" = "false"
+          echo 'Building an unsigned developer preview; notarization is intentionally disabled.'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release source and contract gates
+        run: |
+          npm run licenses
+          npm run audit:brand
+          node --test tools/verify-release-assets.test.mjs
+          npm run test:win:packaging
+
+      - name: Build host-native ARM64 XLSX sidecar
+        run: cargo build --locked --release --manifest-path apps/sheets/native/xlsx-engine/Cargo.toml --config apps/sheets/native/xlsx-engine/.cargo/config.toml
+
+      - name: Package exact commit
+        run: npm run dist:mac
+
+      - name: Verify DMG, app bundle, architecture, resources, and launch
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${EXPECTED_VERSION:-$(node -p "require('./apps/shell/package.json').version")}
+          release_dir='apps/shell/release'
+          dmg="$release_dir/Captivela Office-${version}-arm64.dmg"
+          zip="$release_dir/Captivela Office-${version}-arm64.zip"
+          app="$release_dir/mac-arm64/Captivela Office.app"
+          report='macos-qa-report.txt'
+
+          test -s "$dmg"
+          test -s "$zip"
+          test -s "$dmg.blockmap"
+          hdiutil verify "$dmg"
+          test -d "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'com.captivela.office'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          lipo -verify_arch arm64 "$app/Contents/MacOS/Captivela Office"
+          lipo -verify_arch arm64 "$app/Contents/Resources/native/xlsx-sidecar"
+          test -x "$app/Contents/Resources/native/xlsx-sidecar"
+          for module in docs sheets slides pdf; do
+            test -d "$app/Contents/Resources/modules/$module"
+          done
+          test -s "$app/Contents/Resources/THIRD-PARTY-NOTICES.txt"
+          test -s "$app/Contents/Resources/LICENSES.chromium.html"
+
+          "$app/Contents/MacOS/Captivela Office" --disable-gpu >captivela-launch.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          sleep 10
+          kill -0 "$app_pid"
+          kill "$app_pid"
+          wait "$app_pid" || true
+          trap - EXIT
+
+          {
+            echo "Captivela Office macOS ARM64 QA"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "version=$version"
+            echo "signed=$SIGNED_RELEASE"
+            echo "runner=$(sw_vers -productVersion) ($(uname -m))"
+            echo 'dmg_verify=passed'
+            echo 'bundle_metadata=passed'
+            echo 'arm64_architecture=passed'
+            echo 'resources=passed'
+            echo 'launch_smoke=passed'
+            if [ "$SIGNED_RELEASE" = 'true' ]; then
+              echo 'notarization=required-and-verified'
+            else
+              echo 'notarization=not-claimed-unsigned-preview'
+            fi
+          } | tee "$report"
+
+      - name: Verify signatures and notarization
+        if: env.SIGNED_RELEASE == 'true'
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${EXPECTED_VERSION:-$(node -p "require('./apps/shell/package.json').version")}
+          app="apps/shell/release/mac-arm64/Captivela Office.app"
+          dmg="apps/shell/release/Captivela Office-${version}-arm64.dmg"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          xcrun stapler validate "$dmg"
+
+      - name: Stage and verify release assets
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${EXPECTED_VERSION:-$(node -p "require('./apps/shell/package.json').version")}
+          mkdir -p release-assets
+          for suffix in dmg dmg.blockmap zip; do
+            cp "apps/shell/release/Captivela Office-${version}-arm64.${suffix}" release-assets/
+          done
+          node tools/verify-release-assets.mjs \
+            --dir release-assets --version "$version" --platform macos --write-manifest
+
+      - name: Upload verified macOS release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-macos-arm64-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: release-assets/**
+
+      - name: Upload macOS QA evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-macos-qa-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            macos-qa-report.txt
+            build-source.txt
+            captivela-launch.log
+
+      - name: Upload packaging diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-macos-arm64-failure-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            apps/shell/release/builder-debug.yml
+            apps/shell/release/builder-effective-config.yaml
+            captivela-launch.log
+            macos-qa-report.txt
+            build-source.txt
