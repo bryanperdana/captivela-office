@@ -32,6 +32,19 @@ test('macOS workflow uses lipo input-file-first verification syntax', () => {
   assert.doesNotMatch(workflow, /lipo -verify_arch arm64/)
 })
 
+test('release workflow verifies the draft target before the published tag ref', () => {
+  const workflow = readFileSync(
+    join(import.meta.dirname, '../.github/workflows/release.yml'),
+    'utf8',
+  )
+  const draftCheck = workflow.indexOf('draft_target=$(gh api')
+  const publish = workflow.indexOf(
+    'gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false',
+  )
+  const tagCheck = workflow.indexOf('tag_commit=$(gh api')
+  assert.ok(draftCheck >= 0 && publish > draftCheck && tagCheck > publish)
+})
+
 test('writes a basename-only manifest and verifies all v0.5.0 assets', async () => {
   const directory = fixture()
   const result = await verifyReleaseAssets({
