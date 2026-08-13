@@ -1,6 +1,38 @@
 name: Windows x64 Build
 
 on:
+  workflow_call:
+    secrets:
+      WINDOWS_CSC_LINK:
+        required: false
+      WINDOWS_CSC_KEY_PASSWORD:
+        required: false
+    inputs:
+      signed:
+        description: 'Require Authenticode signing (public-release gate)'
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: 'Exact commit to package'
+        required: false
+        type: string
+        default: ''
+      expected_commit:
+        description: 'Commit SHA that checkout must resolve to'
+        required: false
+        type: string
+        default: ''
+      version:
+        description: 'Expected application version'
+        required: false
+        type: string
+        default: ''
+      artifact_key:
+        description: 'Stable artifact-name suffix for callers'
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       signed:
@@ -28,7 +60,7 @@ on:
       - 'package-lock.json'
 
 concurrency:
-  group: windows-x64-${{ github.ref }}
+  group: windows-x64-${{ github.ref }}-${{ inputs.artifact_key || 'build' }}
   cancel-in-progress: true
 
 permissions:
@@ -44,13 +76,36 @@ jobs:
       CSC_LINK: ${{ inputs.signed && secrets.WINDOWS_CSC_LINK || '' }}
       CSC_KEY_PASSWORD: ${{ inputs.signed && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
     steps:
-      - name: Checkout
+      - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify source identity and version
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          $actualCommit = git rev-parse HEAD
+          $actualVersion = node -p "require('./apps/shell/package.json').version"
+          if ($env:EXPECTED_COMMIT -and $actualCommit -ne $env:EXPECTED_COMMIT) {
+            throw "Checked out $actualCommit, expected $env:EXPECTED_COMMIT"
+          }
+          if ($env:EXPECTED_VERSION -and $actualVersion -ne $env:EXPECTED_VERSION) {
+            throw "Package version $actualVersion, expected $env:EXPECTED_VERSION"
+          }
+          @(
+            "commit=$actualCommit"
+            "version=$actualVersion"
+            "runner_arch=x64"
+          ) | Set-Content -Encoding utf8 build-source.txt
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -98,6 +153,17 @@ jobs:
         shell: pwsh
         run: ./tools/qa-windows-package.ps1
 
+      - name: Stage and verify Windows release assets
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:EXPECTED_VERSION) { $env:EXPECTED_VERSION } else { node -p "require('./apps/shell/package.json').version" }
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Copy-Item "apps/shell/release/Captivela Office Setup $version.exe" release-assets/
+          Copy-Item "apps/shell/release/Captivela Office Setup $version.exe.blockmap" release-assets/
+          node tools/verify-release-assets.mjs --dir release-assets --version $version --platform windows --write-manifest
+
       - name: Verify Authenticode signatures
         if: env.SIGNED_RELEASE == 'true'
         shell: pwsh
@@ -113,16 +179,24 @@ jobs:
             }
           }
 
-      - name: Upload Windows installer and QA evidence
+      - name: Upload verified Windows release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: captivela-office-windows-x64-${{ github.sha }}
+          name: captivela-office-windows-x64-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: release-assets/**
+
+      - name: Upload Windows QA evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-windows-qa-${{ inputs.artifact_key || github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            apps/shell/release/Captivela Office Setup *.exe
             apps/shell/release/latest.yml
             artifacts/windows-qa/**
+            build-source.txt
 
       - name: Upload runtime diagnostics on failure
         if: failure()

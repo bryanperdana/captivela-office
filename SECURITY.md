@@ -2,11 +2,10 @@
 
 ## Reporting a Vulnerability
 
-Please report suspected vulnerabilities privately through GitHub's private
-vulnerability reporting for the Captivela Office repository. Until this private
-staging repository is published, contact the repository owner through GitHub
-instead of opening a public issue. We aim to acknowledge reports within 72
-hours.
+Please report suspected vulnerabilities through Captivela Office's
+[private vulnerability reporting](https://github.com/bryanperdana/captivela-office/security/advisories/new)
+channel. Do not open a public issue for a suspected vulnerability. We aim to
+acknowledge reports within 72 hours.
 
 Do not include real API keys, access tokens, private documents, or other
 sensitive user data in a report. Use synthetic credentials and redacted sample
@@ -38,8 +37,10 @@ All application windows run with the full Electron renderer lockdown:
   (`@genoffice/electron-utils` → `safeExternalUrl`) that parses the URL and
   enforces a protocol allowlist (http/https; pdf link annotations additionally
   allow mailto). `file:`, `javascript:`, and custom schemes are always rejected.
-- No API keys are hardcoded. AI requests are proxied through the signed-in
-  account by default; user-supplied keys stay in the OS-level settings store.
+- No API keys are hardcoded. Fresh installs use user-configured
+  OpenAI-compatible providers. Keys are encrypted with Electron `safeStorage`,
+  resolved in the trusted main process, and represented to renderers only by a
+  stored-key marker.
 
 ## Threat Model: AI-Generated Layout Scripts (slides)
 

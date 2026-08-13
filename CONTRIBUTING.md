@@ -1,61 +1,64 @@
-# Contributing to GenOffice
+# Contributing to Captivela Office
 
-Thanks for your interest in contributing. This document covers the local
-setup, the checks a change must pass, and the conventions used in this
-repository.
+Thank you for helping improve Captivela Office. This guide covers the normal fork-and-pull-request workflow, local setup, required checks, and the file-fidelity standards used in this repository.
 
-## How changes land here
+## Contribution workflow
 
-This GitHub repository is a mirror: development happens in a private tree,
-and `main` here advances through single squashed snapshot commits
-(`Sync snapshot (<date>)`). That is why every file in a sync shows the same
-last-commit message, and why nobody — maintainers included — pushes to
-`main` directly.
+1. Search existing issues and pull requests before starting substantial work.
+2. Fork `bryanperdana/captivela-office` on GitHub and clone your fork.
+3. Create a focused branch from the current `main` branch.
+4. Make the change, add appropriate tests, and run the checks below.
+5. Push the branch to your fork and open a pull request against this repository's `main` branch.
 
-External pull requests are welcome and are reviewed here. Once a change is
-accepted, a maintainer imports it into the private tree with your authorship
-preserved as a `Co-authored-by:` trailer, and it ships to `main` in the next
-snapshot; your PR is then closed with a note pointing at the snapshot that
-carried it. GitHub will show the PR as "closed" rather than "merged" — the
-code and the attribution still land. Issues and feature requests are handled
-directly on this repository as usual.
+Do not push directly to `main`. A pull request should explain the problem, the approach, user-visible effects, and any checks that were not run. Maintainers may ask for a smaller scope or additional compatibility evidence before merging.
 
 ## Repository layout
 
-- `apps/*` — the five Electron apps (docs, sheets, slides, pdf, shell).
-  Each app is an npm workspace with its own `src/main` (Electron main
-  process), `src/renderer` (React UI), and `tests/`.
-- `packages/*` — pure TypeScript engine and shared packages (no Electron
-  dependency, unit-tested): docx/pptx engines, AI agent core, providers,
-  i18n, UI kit.
-- `apps/sheets/native/xlsx-engine` — Rust xlsx engine (runs as a sidecar process) for xlsx import/export.
+- `apps/docs`, `apps/sheets`, `apps/slides`, `apps/pdf` — Electron editors with main-process, preload, renderer, and test code.
+- `apps/shell` — suite home screen, tab host, updater surface, and installer packaging entry point.
+- `packages/*` — format engines and shared TypeScript packages for AI, UI, localization, project storage, and Electron utilities.
+- `apps/sheets/native/xlsx-engine` — Rust XLSX import/export sidecar.
+- `ee/` — separately licensed boundary reserved for future enterprise modules; external contributions must not modify it.
 
 ## Getting started
 
-Prerequisites: Node 20+, npm 10+, and a Rust toolchain (`cargo` on PATH,
-needed only for the sheets xlsx sidecar).
+Prerequisites:
+
+- Node.js 20
+- npm 10 or newer
+- Rust stable with `cargo` on `PATH` for the Sheets XLSX sidecar
 
 ```bash
-npm install
-npm run fixtures     # generate test .docx fixtures (one-time, and after docx-engine changes)
-npm run dev          # all editors + shell against Vite dev servers
-npm run dev:docs     # or run a single app
+git clone https://github.com/YOUR-USERNAME/captivela-office.git
+cd captivela-office
+npm ci
+npm run fixtures
+npm run dev
 ```
+
+Use `npm ci`, not `npm install`, for a deterministic install from the committed lockfile. `npm run dev:docs` runs only Captivela Docs; equivalent workspace commands can be used for the other editors.
 
 ## Checks every change must pass
 
-CI runs these on every PR; please run them locally first:
+Run the repository checks from the root under Node 20:
 
 ```bash
-npm run format:check # Prettier check for uncommitted changed/new files
-npm run lint         # ESLint across the repo (0 errors required; warnings allowed)
+npm run format:check # Prettier check for changed and new files
+npm run licenses     # production dependency license allowlist
+npm run lint         # ESLint; zero errors required
+npm run audit:brand  # user-visible Captivela branding audit
 npm run typecheck    # tsc --noEmit across every workspace
-npm test             # engine + app unit tests (also runs the Rust sidecar tests)
-npm run licenses     # production dependency licenses within the permissive allowlist
+npm run fixtures     # regenerate deterministic DOCX fixtures
+npm test             # engine, app, and Rust sidecar tests
 ```
 
-Formatting is intentionally incremental: existing files are not reformatted
-unless they are part of your change. Run these exact commands before committing:
+After regenerating fixtures, confirm that committed fixtures did not drift unexpectedly:
+
+```bash
+git diff --exit-code -- fixtures/generated
+```
+
+Formatting is intentionally incremental. Run these exact commands as applicable:
 
 ```bash
 npm run format                              # format uncommitted changed/new files
@@ -63,102 +66,99 @@ npm run format:check                        # verify uncommitted changed/new fil
 npm run format:check -- --base origin/main  # verify committed files on your branch
 ```
 
-CI supplies the PR or push base automatically and checks only files changed from
-that base. This keeps the formatter gate useful without creating a repository-wide
-formatting diff.
+Changes to Sheets import/export must also pass its compatibility gate:
+
+```bash
+npm run fixtures -w @genoffice/sheets
+npm run compat -w @genoffice/sheets
+```
+
+Changes affecting the Electron shell or cross-app behavior should run:
+
+```bash
+npm run build:all
+npm run test:e2e
+```
+
+CI additionally checks Rust dependency licenses with `cargo deny`. If your change adds or updates Rust dependencies, run `cargo deny check licenses --manifest-path apps/sheets/native/xlsx-engine/Cargo.toml` locally when `cargo-deny` is available.
 
 ## Building installers
 
-Run these from the repository root — they regenerate the third-party
-notices and build all five apps before packaging:
+Run packaging commands from the repository root. They regenerate third-party notices and build all five applications before packaging:
 
 ```bash
-npm run dist:mac   # dmg + zip
-npm run dist:win   # nsis installer
+npm run dist:mac   # DMG + ZIP on macOS
+npm run dist:win   # NSIS installer on Windows
 ```
 
-Without Apple or Windows signing credentials in the environment these produce
-unsigned artifacts: code signing and notarization are skipped with a warning
-rather than failing. That is the expected result for a contributor build.
+Contributor packages are unsigned unless release-signing credentials are explicitly configured. Unsigned artifacts are developer builds and must not be represented as trusted public releases.
 
-`dist:win` additionally expects the xlsx sidecar at the MinGW cross-compilation
-path. Building on Windows leaves it under the MSVC target instead, so stage it
-first:
+### Windows x64/MSVC contract
+
+The authoritative Windows package is built on Windows with Rust stable targeting `x86_64-pc-windows-msvc`. The repository workflow in [`.github/workflows/windows-build.yml`](.github/workflows/windows-build.yml) uses this sequence:
 
 ```bash
-cargo build --release --target x86_64-pc-windows-gnu   # from apps/sheets/native/xlsx-engine
+npm ci
+npm run test:win:packaging
+npm run native:build:win-x64 -w @genoffice/sheets
+npm run notices
+npm run build:all
+npm run verify:win:inputs
+npm run dist:win -w @genoffice/shell
 ```
 
-or copy an existing `target/release/xlsx-sidecar.exe` to
-`target/x86_64-pc-windows-gnu/release/`.
+The native build must produce the x64 MSVC Sheets sidecar expected by the packaging input check. Do not substitute the MinGW `x86_64-pc-windows-gnu` target or manually copy a binary into a different target directory. The workflow then runs `tools/qa-windows-package.ps1` against the packaged runtime and installer.
 
-## Environment variables
+Signed release runs fail closed when Authenticode credentials are missing or a signature is invalid. Normal contributor runs are expected to remain unsigned.
 
-None are required — the apps run with all of these unset. They exist for
-testing and local overrides:
+## Configuration and secrets
 
-| Variable                                                 | Effect                                                                 |
-| -------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `GENOFFICE_USER_DATA`                                    | Override the Electron userData directory (test isolation)              |
-| `GENOFFICE_LANG`                                         | Force the UI language instead of following the OS locale               |
-| `GENOFFICE_FAKE_UPDATE`                                  | Exercise the updater UI without a real release feed                    |
-| `GENOFFICE_CLOUD_SLIDE`, `GENOFFICE_CLOUD_SLIDE_TIER`    | Route slide generation through the cloud endpoint                      |
-| `GSK_API_KEY`, `GSK_CLI_PATH`                            | Genspark credentials / CLI location for the built-in AI provider       |
-| `AI_SEARCH_DISABLE_GSK`, `SERPER_API_KEY`                | Disable the gsk search backend / supply a Serper key instead           |
-| `XLSX_SIDECAR_PATH`, `XLSX_OPEN_PATH`, `XLSX_DEBUG_PORT` | Point at a locally built xlsx sidecar and its debug port               |
-| `*_DEV_PORT`, `*_RENDERER_URL`                           | Per-app Vite dev server ports and renderer URLs (set by `npm run dev`) |
+No credentials are required to build the editors or run the non-provider test suite. AI features use user-configured OpenAI-compatible provider settings.
 
-AI features degrade rather than break without credentials: requests surface an
-inline sign-in prompt, and web search falls back to a keyless backend.
+- Never commit API keys, access tokens, credentials, or private document fixtures.
+- API keys must remain behind the existing main-process settings boundary: encrypted through Electron `safeStorage`, resolved in the main process, and represented to renderers only by a stored-key marker.
+- Use `GENOFFICE_USER_DATA` only as the existing test/development override for Electron user-data isolation.
+- `XLSX_SIDECAR_PATH`, `XLSX_OPEN_PATH`, and `XLSX_DEBUG_PORT` are local sidecar development overrides.
+- `*_DEV_PORT` and `*_RENDERER_URL` are per-app development server overrides normally set by `npm run dev`.
 
 ## Coding conventions
 
-- **English only** in code, comments, commit messages, and docs. User-facing
-  strings go through the i18n resources (`src/renderer/i18n/`, plus the inline
-  main-process dictionaries in `src/main/`), which are the only places
-  non-English text belongs (plus test fixture text).
-- TypeScript everywhere; avoid adding new `any` surfaces where a precise type
-  is cheap.
-- Tests live in `apps/*/tests` and `packages/*/tests` (vitest). New engine
-  behavior needs a unit test; renderer-only UI tweaks generally don't.
-- Local Playwright/Electron acceptance drivers belong in `scripts/drivers/`
-  (gitignored, excluded from CI) — see `scripts/drivers/README.md`.
-- The Word-fidelity scripts (`scripts/docs-word-fidelity.mjs`,
-  `scripts/pagination-baseline-word.mjs`) need macOS with Microsoft Word
-  installed and AppleScript automation permission granted; they are optional
-  local tools and never run in CI.
-- Keep files from growing without bound: if you are adding a substantial new
-  concern to an already-large file, prefer a new module.
+- Use English in code, comments, commit messages, and documentation. User-facing translations belong in the existing i18n resources.
+- Prefer precise TypeScript types; do not add an `any` surface when a useful type is practical.
+- Put tests in `apps/*/tests` or `packages/*/tests`. New engine behavior requires focused tests.
+- Keep Electron privilege boundaries intact: renderer code must not gain Node.js access or bypass typed, validated IPC.
+- Put local Playwright/Electron acceptance drivers in `scripts/drivers/`; see [`scripts/drivers/README.md`](scripts/drivers/README.md).
+- The optional Word-fidelity scripts require macOS, Microsoft Word, and AppleScript automation permission. They do not run in CI.
+- Prefer a new module when adding a substantial concern to an already-large file.
 
-## Commit and PR guidelines
+## File-format fidelity expectations
 
-- Small, focused commits with imperative English subject lines
-  (e.g. `fix docx table border round-trip`, `add slides chart legend parsing`).
-- A PR should explain _why_ the change is needed, and mention which of the
-  checks above you ran.
-- File format fidelity is the core product promise: for changes touching
-  open/save paths (docx/xlsx/pptx), include a round-trip test proving
-  untouched content survives byte-for-byte.
+File compatibility and preservation are core project goals.
 
-## Reporting bugs and requesting features
+- Changes to DOCX, XLSX/XLS/CSV, or PPTX open/save paths must include a round-trip test.
+- Prove that untouched package entries or content survive unchanged where the engine contract promises preservation.
+- Include the smallest non-confidential fixture that reproduces a compatibility issue.
+- Test in the originating office application when the change depends on application-specific behavior, and document what was tested.
+- For visible renderer changes, attach before/after screenshots or a short recording using representative content.
 
-Use the issue templates. For suspected security issues, do **not** open a
-public issue — follow [SECURITY.md](SECURITY.md).
+Do not make broad compatibility claims from a single fixture or screenshot.
 
-## Code of conduct
+## Commits and pull requests
 
-All community spaces follow the
-[Contributor Covenant](CODE_OF_CONDUCT.md); participation implies acceptance.
+- Keep commits small and focused, with imperative English subjects such as `fix docx table border round trip`.
+- Avoid unrelated reformatting or generated-file churn.
+- Link the relevant issue when one exists.
+- Complete the pull request template and list exact validation commands and results.
+- Clearly identify platform-specific changes and any platform you could not test.
 
-## License and CLA
+## Bugs, features, and security reports
 
-There is no CLA (contributor license agreement), and we do not plan to add
-one. By contributing, you agree that your contributions are licensed under
-the [Apache License 2.0](LICENSE) that covers this project — inbound =
-outbound, per Apache-2.0 §5. Because community contributions keep their
-Apache-2.0 terms, the open-source core cannot be retroactively relicensed.
+Use the repository's issue templates for public bug reports and feature requests. Redact private content from sample files, screenshots, and logs.
 
-The `ee/` directory is reserved for future enterprise modules under a
-[separate license](ee/LICENSE) and does not accept external contributions —
-pull requests from outside the maintainer team must not modify files under
-`ee/` (enforced via [CODEOWNERS](.github/CODEOWNERS)).
+Do **not** open a public issue for a suspected vulnerability. Follow [SECURITY.md](SECURITY.md) and use the private reporting channel.
+
+## Code of conduct and licensing
+
+All project community spaces follow the [Contributor Covenant](CODE_OF_CONDUCT.md).
+
+There is no contributor license agreement. By contributing, you agree that your contribution is licensed under the [Apache License 2.0](LICENSE) that covers the open-source project. The `ee/` directory has a [separate license](ee/LICENSE), does not accept external contributions, and remains protected by [CODEOWNERS](.github/CODEOWNERS).
