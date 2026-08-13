@@ -163,8 +163,8 @@ jobs:
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
           fi
-          tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')
-          test "$tag_commit" = "$RELEASE_COMMIT"
+          draft_target=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.target_commitish')
+          test "$draft_target" = "$RELEASE_COMMIT"
 
       - name: Upload and verify draft assets
         run: |
@@ -179,4 +179,6 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')
+          test "$tag_commit" = "$RELEASE_COMMIT"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '{tag_name,draft,prerelease,target_commitish,assets:[.assets[]|{name,size}]}'
