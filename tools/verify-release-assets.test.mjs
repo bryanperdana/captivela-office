@@ -23,6 +23,15 @@ test('Electron Builder pins deterministic public macOS artifact names', () => {
   assert.equal(builderConfig.mac.artifactName, 'Captivela Office-${version}-${arch}.${ext}')
 })
 
+test('macOS workflow uses lipo input-file-first verification syntax', () => {
+  const workflow = readFileSync(
+    join(import.meta.dirname, '../.github/workflows/macos-build.yml'),
+    'utf8',
+  )
+  assert.match(workflow, /lipo "\$app\/Contents\/MacOS\/Captivela Office" -verify_arch arm64/)
+  assert.doesNotMatch(workflow, /lipo -verify_arch arm64/)
+})
+
 test('writes a basename-only manifest and verifies all v0.5.0 assets', async () => {
   const directory = fixture()
   const result = await verifyReleaseAssets({

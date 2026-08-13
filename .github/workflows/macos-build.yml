@@ -183,8 +183,8 @@ jobs:
           test -d "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'com.captivela.office'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
-          lipo -verify_arch arm64 "$app/Contents/MacOS/Captivela Office"
-          lipo -verify_arch arm64 "$app/Contents/Resources/native/xlsx-sidecar"
+          lipo "$app/Contents/MacOS/Captivela Office" -verify_arch arm64
+          lipo "$app/Contents/Resources/native/xlsx-sidecar" -verify_arch arm64
           test -x "$app/Contents/Resources/native/xlsx-sidecar"
           for module in docs sheets slides pdf; do
             test -d "$app/Contents/Resources/modules/$module"
