@@ -106,6 +106,7 @@ jobs:
       RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
       ARTIFACT_KEY: ${{ needs.resolve.outputs.artifact_key }}
       RELEASE_TITLE: ${{ inputs.title }}
+
     steps:
       - name: Checkout exact release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,24 +157,31 @@ jobs:
       - name: Create fail-closed draft prerelease
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            state=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.draft')
+          release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n 1)
+          if [ -n "$release_id" ]; then
+            state=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.draft')
             test "$state" = 'true' || { echo "Refusing to replace non-draft release $TAG" >&2; exit 1; }
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
+            release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"$TAG\" and .draft == true) | .id" | head -n 1)
           fi
-          draft_target=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.target_commitish')
+          test -n "$release_id"
+          printf '%s' "$release_id" > "$RUNNER_TEMP/captivela-release-id"
+          draft_target=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.target_commitish')
           test "$draft_target" = "$RELEASE_COMMIT"
 
       - name: Upload and verify draft assets
         run: |
           set -euo pipefail
+          release_id=$(cat "$RUNNER_TEMP/captivela-release-id")
           gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
           expected=6
-          actual=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '[.assets[] | select(.size > 0)] | length')
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '[.assets[] | select(.size > 0)] | length')
           test "$actual" -eq "$expected"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | [.name, .size] | @tsv' | sort
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.assets[] | [.name, .size] | @tsv' | sort
 
       - name: Publish prerelease only after all verification passes
         run: |

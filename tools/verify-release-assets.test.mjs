@@ -43,6 +43,10 @@ test('release workflow verifies the draft target before the published tag ref', 
   )
   const tagCheck = workflow.indexOf('tag_commit=$(gh api')
   assert.ok(draftCheck >= 0 && publish > draftCheck && tagCheck > publish)
+  assert.match(workflow, /releases\?per_page=100/)
+  assert.match(workflow, /releases\/\$release_id/)
+  assert.match(workflow, /gh release edit "\$TAG"[^\n]+--target "\$RELEASE_COMMIT"/)
+  assert.doesNotMatch(workflow, /releases\/tags\/\$TAG.*\.draft/)
 })
 
 test('writes a basename-only manifest and verifies all v0.5.0 assets', async () => {
