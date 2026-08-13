@@ -34,6 +34,10 @@ export function expectedReleaseAssets(version, platform = 'all') {
   return assets[platform]
 }
 
+export function publicReleaseAssetName(name) {
+  return name.replaceAll(' ', '.')
+}
+
 function hasDuplicateExtension(name) {
   const suffixes = name.toLowerCase().split('.').slice(1)
   return suffixes.some((suffix, index) => index > 0 && suffix === suffixes[index - 1])
@@ -67,9 +71,12 @@ export async function verifyReleaseAssets({
   platform = 'all',
   manifest = join(directory, 'SHA256SUMS'),
   writeManifest = false,
+  publicNames = false,
 }) {
   const root = resolve(directory)
-  const expected = expectedReleaseAssets(version, platform)
+  const expected = expectedReleaseAssets(version, platform).map((name) =>
+    publicNames ? publicReleaseAssetName(name) : name,
+  )
   const names = readdirSync(root).filter((name) => statSync(join(root, name)).isFile())
 
   for (const name of names) {
@@ -106,10 +113,11 @@ export async function verifyReleaseAssets({
 }
 
 function parseArgs(argv) {
-  const options = { platform: 'all', writeManifest: false }
+  const options = { platform: 'all', writeManifest: false, publicNames: false }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--write-manifest') options.writeManifest = true
+    else if (arg === '--public-names') options.publicNames = true
     else if (['--dir', '--version', '--platform', '--manifest'].includes(arg)) {
       const value = argv[++i]
       if (!value) throw new Error(`${arg} requires a value`)

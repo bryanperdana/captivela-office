@@ -11,11 +11,11 @@ release sources.
 
 ## Windows x64
 
-1. Download `Captivela Office Setup 0.5.0.exe` and `SHA256SUMS.txt`.
+1. Download `Captivela.Office.Setup.0.5.0.exe` and `SHA256SUMS.txt`.
 2. Verify the file in PowerShell:
 
    ```powershell
-   Get-FileHash "$HOME\Downloads\Captivela Office Setup 0.5.0.exe" -Algorithm SHA256
+   Get-FileHash "$HOME\Downloads\Captivela.Office.Setup.0.5.0.exe" -Algorithm SHA256
    Get-Content "$HOME\Downloads\SHA256SUMS.txt"
    ```
 
@@ -30,15 +30,15 @@ Do not disable SmartScreen or Windows Defender globally.
 ## macOS Apple Silicon
 
 This build requires an Apple Silicon Mac (`arm64`). Download
-`Captivela Office-0.5.0-arm64.dmg` and `SHA256SUMS.txt` from the same release.
+`Captivela.Office-0.5.0-arm64.dmg` and `SHA256SUMS.txt` from the same release.
 
 ### 1. Verify the DMG container and checksum
 
 ```bash
 cd "$HOME/Downloads"
-hdiutil verify "Captivela Office-0.5.0-arm64.dmg"
-shasum -a 256 "Captivela Office-0.5.0-arm64.dmg"
-grep 'Captivela Office-0.5.0-arm64.dmg' SHA256SUMS.txt
+hdiutil verify "Captivela.Office-0.5.0-arm64.dmg"
+shasum -a 256 "Captivela.Office-0.5.0-arm64.dmg"
+grep 'Captivela.Office-0.5.0-arm64.dmg' SHA256SUMS.txt
 ```
 
 `hdiutil verify` must succeed and both SHA-256 values must match exactly. If

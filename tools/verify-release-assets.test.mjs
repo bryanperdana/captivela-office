@@ -7,6 +7,7 @@ import builderConfig from '../apps/shell/electron-builder.cjs'
 import {
   expectedReleaseAssets,
   parseChecksumManifest,
+  publicReleaseAssetName,
   verifyReleaseAssets,
 } from './verify-release-assets.mjs'
 
@@ -21,6 +22,16 @@ function fixture(platform = 'all') {
 
 test('Electron Builder pins deterministic public macOS artifact names', () => {
   assert.equal(builderConfig.mac.artifactName, 'Captivela Office-${version}-${arch}.${ext}')
+})
+
+test('maps internal spaced filenames to GitHub canonical dotted names', () => {
+  assert.deepEqual(expectedReleaseAssets('0.5.0').map(publicReleaseAssetName), [
+    'Captivela.Office.Setup.0.5.0.exe',
+    'Captivela.Office.Setup.0.5.0.exe.blockmap',
+    'Captivela.Office-0.5.0-arm64.dmg',
+    'Captivela.Office-0.5.0-arm64.dmg.blockmap',
+    'Captivela.Office-0.5.0-arm64.zip',
+  ])
 })
 
 test('macOS workflow uses lipo input-file-first verification syntax', () => {
