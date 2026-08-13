@@ -139,12 +139,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
           test "$(node -p "require('./apps/shell/package.json').version")" = "$VERSION"
           mkdir release-assets
-          cp "incoming/windows/Captivela Office Setup ${VERSION}.exe" release-assets/
-          cp "incoming/windows/Captivela Office Setup ${VERSION}.exe.blockmap" release-assets/
-          cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg" release-assets/
-          cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg.blockmap" release-assets/
-          cp "incoming/macos/Captivela Office-${VERSION}-arm64.zip" release-assets/
-          node tools/verify-release-assets.mjs --dir release-assets --version "$VERSION" --write-manifest
+          cp "incoming/windows/Captivela Office Setup ${VERSION}.exe" "release-assets/Captivela.Office.Setup.${VERSION}.exe"
+          cp "incoming/windows/Captivela Office Setup ${VERSION}.exe.blockmap" "release-assets/Captivela.Office.Setup.${VERSION}.exe.blockmap"
+          cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg" "release-assets/Captivela.Office-${VERSION}-arm64.dmg"
+          cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg.blockmap" "release-assets/Captivela.Office-${VERSION}-arm64.dmg.blockmap"
+          cp "incoming/macos/Captivela Office-${VERSION}-arm64.zip" "release-assets/Captivela.Office-${VERSION}-arm64.zip"
+          node tools/verify-release-assets.mjs --dir release-assets --version "$VERSION" --public-names --write-manifest
           mv release-assets/SHA256SUMS release-assets/SHA256SUMS.txt
           {
             printf '%s\n\n' '# Captivela Office developer preview'
@@ -178,10 +178,18 @@ jobs:
           set -euo pipefail
           release_id=$(cat "$RUNNER_TEMP/captivela-release-id")
           gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
-          expected=6
-          actual=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '[.assets[] | select(.size > 0)] | length')
-          test "$actual" -eq "$expected"
-          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.assets[] | [.name, .size] | @tsv' | sort
+          node --input-type=module -e '
+            import { createHash } from "node:crypto";
+            import { readFileSync, readdirSync, statSync } from "node:fs";
+            for (const name of readdirSync("release-assets").sort()) {
+              const path = "release-assets/" + name;
+              const data = readFileSync(path);
+              console.log(name + "\t" + statSync(path).size + "\tsha256:" + createHash("sha256").update(data).digest("hex"));
+            }
+          ' > expected-assets.tsv
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            --jq '.assets[] | [.name, .size, .digest] | @tsv' | sort > actual-assets.tsv
+          diff -u expected-assets.tsv actual-assets.tsv
 
       - name: Publish prerelease only after all verification passes
         run: |

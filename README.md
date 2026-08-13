@@ -19,8 +19,8 @@
 
 <table>
 <tr>
-<td align="center"><strong>Windows x64</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela%20Office%20Setup%200.5.0.exe">Download the .exe installer</a></td>
-<td align="center"><strong>macOS Apple Silicon</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela%20Office-0.5.0-arm64.dmg">Download the .dmg installer</a></td>
+<td align="center"><strong>Windows x64</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela.Office.Setup.0.5.0.exe">Download the .exe installer</a></td>
+<td align="center"><strong>macOS Apple Silicon</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela.Office-0.5.0-arm64.dmg">Download the .dmg installer</a></td>
 </tr>
 </table>
 
