@@ -1,6 +1,6 @@
 # GenOffice
 
-An AI-native office suite for macOS and Windows: word processor, spreadsheet,
+An AI-native office suite for macOS, Windows and Linux: word processor, spreadsheet,
 presentations, and PDF — five Electron apps sharing one engine layer, built
 around AI editing as a first-class workflow rather than a bolted-on chat box.
 
@@ -14,6 +14,7 @@ Signed installers built from `main`:
 
 - **macOS** (Apple Silicon): [GenOffice-0.5.83-arm64.dmg](https://github.com/genspark-ai/genoffice/releases/download/v0.5.83/GenOffice-0.5.83-arm64.dmg)
 - **Windows** (x64): [GenOfficeSetup-v0.5.79.exe](https://github.com/genspark-ai/genoffice/releases/download/v0.5.83/GenOfficeSetup-v0.5.79.exe)
+- **Linux** (x64 AppImage): *coming soon — see `.github/workflows/release-linux.yml`*
 
 Previous version:
 
@@ -69,6 +70,7 @@ npm run dev          # all four editors + shell against Vite dev servers
 npm run dev:docs     # a single app (same pattern works per workspace)
 npm run dist:mac     # package macOS dmg (regenerates third-party notices)
 npm run dist:win     # package Windows nsis installer
+npm run dist:linux   # package Linux AppImage
 ```
 
 The sheets app additionally needs a Rust toolchain for its xlsx sidecar

@@ -45,6 +45,17 @@ const FONT_TABLE: Record<string, Array<{ script: Script; file: string; family: s
     { script: 'thai', file: 'C:\\Windows\\Fonts\\leelawui.ttf', family: 'Leelawadee UI', sample: 'ก' },
     { script: 'devanagari', file: 'C:\\Windows\\Fonts\\Nirmala.ttf', family: 'Nirmala UI', sample: 'क' },
   ],
+  linux: [
+    // Debian/Ubuntu paths first, then Fedora — first existing file per script wins (line 105 skips duplicates)
+    { script: 'arabic', file: '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf', family: 'Noto Naskh Arabic', sample: 'ا' },
+    { script: 'arabic', file: '/usr/share/fonts/google-noto/NotoNaskhArabic-Regular.ttf', family: 'Noto Naskh Arabic', sample: 'ا' },
+    { script: 'arabic', file: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', family: 'DejaVu Sans', sample: 'ا' },
+    { script: 'hebrew', file: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', family: 'DejaVu Sans', sample: 'א' },
+    { script: 'thai', file: '/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf', family: 'Noto Sans Thai', sample: 'ก' },
+    { script: 'thai', file: '/usr/share/fonts/google-noto/NotoSansThai-Regular.ttf', family: 'Noto Sans Thai', sample: 'ก' },
+    { script: 'devanagari', file: '/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf', family: 'Noto Sans Devanagari', sample: 'क' },
+    { script: 'devanagari', file: '/usr/share/fonts/google-noto/NotoSansDevanagari-Regular.ttf', family: 'Noto Sans Devanagari', sample: 'क' },
+  ],
 }
 
 interface HbModule {

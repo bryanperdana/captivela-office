@@ -155,7 +155,7 @@ describe('initAutoUpdater', () => {
 
   it('does nothing on unsupported platforms', async () => {
     platformSpy?.restore()
-    setPlatform('linux')
+    setPlatform('freebsd')
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS)

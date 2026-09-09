@@ -323,7 +323,11 @@ export function initAutoUpdater(
   // target + latest-mac.yml (Squirrel.Mac requires a signed, notarized app
   // — dmg is first-install only).
   if (!app.isPackaged) return
-  if (process.platform !== 'win32' && process.platform !== 'darwin') return
+  // Auto-update is supported on macOS (zip/Squirrel), Windows (NSIS), and
+  // Linux (AppImage full-package replacement). Other packaging formats
+  // (deb/rpm/snap) use their own package managers; electron-updater silently
+  // no-ops when the APPIMAGE env var is absent.
+  if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux') return
 
   updaterActive = true
   autoUpdater.channel = CHANNEL_FEED[initialChannel]

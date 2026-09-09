@@ -77,3 +77,30 @@ The document engines (`docx-engine`, `pptx-engine`, `pptx-render`,
 `file-parse`), the agent loop (`agent-core`), and the editors' own UI and file
 round-trip behaviour are upstream code, carried unmodified apart from the AI
 panel wiring described above.
+
+## Phase 1 — Linux platform support
+
+### Added
+
+- `apps/slides/src/main/shaped-metrics.ts` — `linux` entries in `FONT_TABLE`
+  for Arabic, Hebrew, Thai and Devanagari complex-script shaping (Noto and
+  DejaVu fonts, with both Debian/Ubuntu and Fedora path variants).
+- `.github/workflows/release-linux.yml` — CI pipeline for AppImage builds.
+
+### Changed
+
+- **Auto-updater.** Removed the Linux early-exit gate in both the shell and
+  docs updaters (`updater.ts`); AppImage auto-update via the generic provider
+  is now active. `electron-updater` silently no-ops when the `APPIMAGE` env
+  var is absent (non-AppImage packaging or dev runs).
+- **CJK font substitution** (`fonts.ts`). Linux uses Noto CJK family names
+  (JP, KR, TC) instead of falling into the Windows substitution list.
+- **Sheets window chrome** (`sheets-main.ts`). Non-darwin platforms now get
+  `titleBarStyle: 'hidden'` with `titleBarOverlay`, matching the docs and
+  slides editors.
+
+### Not changed
+
+- **`safeStorage` handling** (`ai-settings-store.ts`). Already Linux-ready:
+  falls back to plaintext with `0600` permissions when no keyring daemon is
+  available.
