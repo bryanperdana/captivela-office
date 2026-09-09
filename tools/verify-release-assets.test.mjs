@@ -69,10 +69,15 @@ test('release workflow verifies the draft target before the published tag ref', 
   )
   const tagCheck = workflow.indexOf('tag_commit=$(gh api')
   assert.ok(draftCheck >= 0 && publish > draftCheck && tagCheck > publish)
-  assert.match(workflow, /release_id=\$\(gh release view "\$TAG"[^\n]+--json id --jq '\.id'\)/)
+  assert.match(
+    workflow,
+    /release_id=\$\(gh api "repos\/\$GITHUB_REPOSITORY\/releases\?per_page=100"/,
+  )
+  assert.match(workflow, /\[\.\[\] \| select\(\.tag_name == \\"\$TAG\\"\)\]\[0\]\.id \/\/ empty/)
   assert.match(workflow, /releases\/\$release_id/)
   assert.match(workflow, /gh release edit "\$TAG"[^\n]+--target "\$RELEASE_COMMIT"/)
-  assert.doesNotMatch(workflow, /--paginate "repos\/\$GITHUB_REPOSITORY\/releases\?per_page=100"/)
+  assert.doesNotMatch(workflow, /gh release view "\$TAG"[^\n]+--json id/)
+  assert.doesNotMatch(workflow, /\| head -n 1/)
   assert.doesNotMatch(workflow, /releases\/tags\/\$TAG.*\.draft/)
 })
 
