@@ -331,7 +331,10 @@ export function initAutoUpdater(
   // target + latest-mac.yml (Squirrel.Mac requires a signed, notarized app
   // — dmg is first-install only).
   if (!app.isPackaged) return
-  if (process.platform !== 'win32' && process.platform !== 'darwin') return
+  // Auto-update is supported on macOS (zip/Squirrel), Windows (NSIS), and
+  // Linux (AppImage full-package replacement). Other packaging formats use
+  // their own package managers; electron-updater no-ops when APPIMAGE is absent.
+  if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux') return
   // Local/internal packages intentionally omit publish config, so
   // electron-builder does not create app-update.yml. Treat that absence as
   // updater disabled instead of letting electron-updater emit ENOENT errors.
