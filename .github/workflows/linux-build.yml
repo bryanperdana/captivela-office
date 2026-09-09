@@ -1,0 +1,136 @@
+name: Linux x64 AppImage Build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Exact commit to package'
+        required: false
+        type: string
+        default: ''
+      expected_commit:
+        description: 'Commit SHA that checkout must resolve to'
+        required: false
+        type: string
+        default: ''
+      version:
+        description: 'Expected application version'
+        required: false
+        type: string
+        default: ''
+      artifact_key:
+        description: 'Stable artifact-name suffix for callers'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: linux-x64-${{ github.ref }}-${{ inputs.artifact_key || 'build' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # ubuntu-22.04 keeps Electron's renderer sandbox compatible with the
+    # unprivileged user-namespace policy required by this project.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify source identity and version
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          actual_commit=$(git rev-parse HEAD)
+          actual_version=$(node -p "require('./apps/shell/package.json').version")
+          if [ -n "$EXPECTED_COMMIT" ] && [ "$actual_commit" != "$EXPECTED_COMMIT" ]; then
+            echo "checked out $actual_commit, expected $EXPECTED_COMMIT" >&2
+            exit 1
+          fi
+          if [ -n "$EXPECTED_VERSION" ] && [ "$actual_version" != "$EXPECTED_VERSION" ]; then
+            echo "package version $actual_version, expected $EXPECTED_VERSION" >&2
+            exit 1
+          fi
+          printf 'commit=%s\nversion=%s\nrunner_arch=%s\n' \
+            "$actual_commit" "$actual_version" "$(uname -m)" | tee build-source.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch, 2026-07
+        with:
+          toolchain: stable
+
+      - name: Cache cargo (xlsx-sidecar)
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: apps/sheets/native/xlsx-engine
+          key: linux-x64
+
+      - name: Allow unprivileged user namespaces (Electron)
+        run: |
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          else
+            echo "kernel.apparmor_restrict_unprivileged_userns not present — skipping"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Linux packaging contract
+        run: npm run test:linux:packaging
+
+      - name: Build and package Linux AppImage
+        run: npm run dist:linux
+
+      - name: Verify packaged AppImage
+        run: npm run verify:linux:appimage -- apps/shell/release/*.AppImage
+
+      - name: Stage deterministic Linux release asset
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=${EXPECTED_VERSION:-$(node -p "require('./apps/shell/package.json').version")}
+          shopt -s nullglob
+          appimages=(apps/shell/release/*.AppImage)
+          test "${#appimages[@]}" -eq 1
+          mkdir -p release-assets
+          cp "${appimages[0]}" "release-assets/Captivela-Office-${version}-x64.AppImage"
+          node tools/verify-release-assets.mjs \
+            --dir release-assets --version "$version" --platform linux --write-manifest
+
+      - name: Upload verified Linux release asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-linux-x64-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: release-assets/**
+
+      - name: Upload Linux packaging diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-linux-x64-failure-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            apps/shell/release/builder-debug.yml
+            apps/shell/release/builder-effective-config.yaml
+            build-source.txt

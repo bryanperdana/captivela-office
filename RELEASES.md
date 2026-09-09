@@ -1,5 +1,20 @@
 # Release Evidence
 
+## Captivela Office 0.5.1 Developer Preview — pending publication
+
+This section describes the intended `v0.5.1` prerelease payload and is not
+release evidence yet. Do not treat its README links as available until the
+unified release workflow completes and the prerelease is published.
+
+The release must build Windows x64, macOS Apple Silicon, and one Linux x86_64
+AppImage from one immutable commit. `SHA256SUMS.txt` must include the six
+platform assets and remote GitHub digests must match the assembled payload
+before publication. Linux preview upgrades are manual; no Linux updater manifest
+is published.
+
+After publication, record the exact source/tag commit, workflow run, AppImage
+filename, byte size, SHA-256, and independent post-publish checksum result here.
+
 ## Captivela Office 0.5.0 Developer Preview
 
 Status: unsigned developer preview. This is not a signed or notarized consumer

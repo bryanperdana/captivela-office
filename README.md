@@ -7,25 +7,26 @@
 [![CI](https://github.com/bryanperdana/captivela-office/actions/workflows/ci.yml/badge.svg)](https://github.com/bryanperdana/captivela-office/actions/workflows/ci.yml)
 [![Windows x64 Build](https://github.com/bryanperdana/captivela-office/actions/workflows/windows-build.yml/badge.svg)](https://github.com/bryanperdana/captivela-office/actions/workflows/windows-build.yml)
 [![License](https://img.shields.io/github/license/bryanperdana/captivela-office)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/bryanperdana/captivela-office?include_prereleases&label=preview)](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.0)
+[![Release](https://img.shields.io/github/v/release/bryanperdana/captivela-office?include_prereleases&label=preview)](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.1)
 
-[Download preview](#download-the-v050-preview) · [Installation guide](INSTALLATION.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
+[Download preview](#download-the-v051-preview) · [Installation guide](INSTALLATION.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
 </div>
 
 ![Captivela Office desktop suite showing its editor workspace](docs/assets/github/hero.webp)
 
-## Download the v0.5.0 preview
+## Download the v0.5.1 preview
 
 <table>
 <tr>
-<td align="center"><strong>Windows x64</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela.Office.Setup.0.5.0.exe">Download the .exe installer</a></td>
-<td align="center"><strong>macOS Apple Silicon</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.0/Captivela.Office-0.5.0-arm64.dmg">Download the .dmg installer</a></td>
+<td align="center"><strong>Windows x64</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.1/Captivela.Office.Setup.0.5.1.exe">Download the .exe installer</a></td>
+<td align="center"><strong>macOS Apple Silicon</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.1/Captivela.Office-0.5.1-arm64.dmg">Download the .dmg installer</a></td>
+<td align="center"><strong>Linux x86_64</strong><br><a href="https://github.com/bryanperdana/captivela-office/releases/download/v0.5.1/Captivela-Office-0.5.1-x64.AppImage">Download the .AppImage</a></td>
 </tr>
 </table>
 
 > [!WARNING]
-> **Unsigned developer preview.** v0.5.0 is for developers and technical early adopters, not a trusted consumer release. The Windows installer is not Authenticode-signed; the macOS app is not Developer ID-signed or notarized. Download only from the [v0.5.0 release page](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.0), verify its published SHA-256 checksum, and follow the narrowly scoped steps in [INSTALLATION.md](INSTALLATION.md). Do not disable Windows security or macOS Gatekeeper globally. The links above become active when the prerelease artifacts are published.
+> **Unsigned developer preview.** v0.5.1 is for developers and technical early adopters, not a trusted consumer release. The Windows installer is not Authenticode-signed, the macOS app is not Developer ID-signed or notarized, and the Linux AppImage is unsigned. Download only from the [v0.5.1 release page](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.1), verify its published SHA-256 checksum, and follow the narrowly scoped steps in [INSTALLATION.md](INSTALLATION.md). Do not disable Windows security, macOS Gatekeeper, or Linux security tooling globally. The links above become active only after the prerelease artifacts are published.
 
 ## Why Captivela Office
 
@@ -79,7 +80,7 @@ The desktop windows use Electron renderer isolation (`contextIsolation: true`, `
 
 ## Install as a user
 
-1. Open the [v0.5.0 prerelease](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.0) and download the artifact for your platform.
+1. Open the [v0.5.1 prerelease](https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.1) and download the artifact for your platform.
 2. Verify its SHA-256 checksum against the value published with the release.
 3. Follow [INSTALLATION.md](INSTALLATION.md) for platform-specific installation and unsigned-app guidance.
 4. Test with copies of your files while the project remains in developer preview.
@@ -110,6 +111,7 @@ npm run dev:docs    # run one editor
 npm run build:all   # build all editors and the shell
 npm run dist:mac    # package the macOS preview
 npm run dist:win    # package the Windows preview
+npm run dist:linux  # package the Linux x86_64 AppImage preview
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full validation matrix, Windows MSVC packaging contract, code conventions, and file-fidelity expectations.
