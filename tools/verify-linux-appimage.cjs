@@ -39,7 +39,9 @@ function verifyExtractedAppImage(root) {
   }
 
   for (const expected of [
-    'Exec=captivela-office',
+    // AppImage desktop files are launched through the bundle's AppRun entrypoint;
+    // the real executable name is verified above.
+    'Exec=AppRun',
     'StartupWMClass=captivela-office',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -74,8 +76,12 @@ function main(argv) {
   }
 }
 
-try {
-  main(process.argv.slice(2))
-} catch (error) {
-  fail(error instanceof Error ? error.message : String(error))
+if (require.main === module) {
+  try {
+    main(process.argv.slice(2))
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error))
+  }
 }
+
+module.exports = { verifyExtractedAppImage }
