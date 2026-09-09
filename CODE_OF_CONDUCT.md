@@ -58,7 +58,7 @@ an individual is officially representing the community in public spaces.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement through
 GitHub's
-[private vulnerability reporting](https://github.com/genspark-ai/genoffice/security/advisories/new)
+[private vulnerability reporting](https://github.com/bryanperdana/captivela-office/security/advisories/new)
 channel on this repository (used here as the private contact channel for
 conduct reports as well). All complaints will be reviewed and investigated
 promptly and fairly.

@@ -3,8 +3,8 @@ name: Promote to Stable
 # Manually promote an already-published beta build to the stable update
 # channel. No rebuild: rewrites latest.yml / latest-mac.yml on the CDN to
 # the versioned feed archive uploaded when the build went to beta, and
-# re-points the marketing download aliases (GenOffice.dmg /
-# GenOfficeSetup.exe) to the promoted version via server-side blob copy.
+# re-points the marketing download aliases (CaptivelaOffice.dmg /
+# CaptivelaOfficeSetup.exe) to the promoted version via server-side blob copy.
 # Windows and mac version sequences are independent. Empty inputs default
 # to each platform's newest beta version; type "skip" to leave a platform
 # untouched.
@@ -29,22 +29,25 @@ concurrency:
   group: promote-stable
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Promote
         env:
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
-          GENOFFICE_UPDATE_URL: ${{ secrets.GENOFFICE_UPDATE_URL }}
+          CAPTIVELA_OFFICE_UPDATE_URL: ${{ secrets.CAPTIVELA_OFFICE_UPDATE_URL || secrets.GENOFFICE_UPDATE_URL }}
           MAC_VERSION: ${{ inputs.mac_version }}
           WIN_VERSION: ${{ inputs.win_version }}
           FORCE: ${{ inputs.force }}
@@ -71,13 +74,13 @@ jobs:
           # substrings of the secret URL, so GitHub's automatic masking does
           # not cover them — mask them explicitly before promote-stable.cjs
           # logs anything (same approach as mac-build.yml / windows-build.yml).
-          URL="${GENOFFICE_UPDATE_URL%/}"
+          URL="${CAPTIVELA_OFFICE_UPDATE_URL%/}"
           REL="${URL#*://*/}"
           echo "::add-mask::${REL%%/*}"
           echo "::add-mask::${REL#*/}"
           echo "::add-mask::$URL"
-          ARGS=""
-          [ -n "$MAC_VERSION" ] && ARGS="$ARGS --mac $MAC_VERSION"
-          [ -n "$WIN_VERSION" ] && ARGS="$ARGS --win $WIN_VERSION"
-          [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
-          node scripts/promote-stable.cjs $ARGS
+          ARGS=()
+          [ -n "$MAC_VERSION" ] && ARGS+=(--mac "$MAC_VERSION")
+          [ -n "$WIN_VERSION" ] && ARGS+=(--win "$WIN_VERSION")
+          [ "$FORCE" = "true" ] && ARGS+=(--force)
+          node scripts/promote-stable.cjs "${ARGS[@]}"

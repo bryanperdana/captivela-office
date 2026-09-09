@@ -93,9 +93,9 @@ export interface HomeApi {
   getUpdateChannel(): Promise<UpdateChannel>
   /** switch + persist the update channel; triggers an immediate update check */
   setUpdateChannel(channel: UpdateChannel): Promise<void>
-  /** Genspark account status (gsk login state; to be upgraded to a signup/account system later) */
+  /** hosted service account status (gsk login state; to be upgraded to a signup/account system later) */
   accountStatus(): Promise<AccountStatus>
-  /** start Genspark login (opens the browser; accountStatus flips to logged-in on completion); returns whether the launch succeeded */
+  /** start hosted service login (opens the browser; accountStatus flips to logged-in on completion); returns whether the launch succeeded */
   accountLogin(): Promise<boolean>
   /** progress events for the login started via accountLogin; returns an unsubscribe */
   onAccountLogin(handler: (ev: AccountLoginEvent) => void): () => void
@@ -109,7 +109,7 @@ export interface HomeApi {
   onboardingSeen(): Promise<boolean>
   /** mark the first-run onboarding as done so it never shows again */
   setOnboardingSeen(): Promise<void>
-  /** open the GenTeam community page in the default browser */
+  /** open the community community page in the default browser */
   openGenTeam(): Promise<void>
 }
 

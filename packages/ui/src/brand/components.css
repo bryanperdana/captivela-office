@@ -1,0 +1,80 @@
+/*
+ * Brand primitives are deliberately opt-in. Apply .captivela-app-chrome only to
+ * application chrome; never place it on document, slide, sheet, or PDF canvases.
+ */
+.captivela-app-chrome {
+  color: var(--captivela-chrome-fg);
+  background: var(--captivela-chrome-bg);
+  font-family: var(--captivela-font-ui);
+}
+
+.captivela-brand-logo {
+  display: block;
+  width: auto;
+  min-width: min(96px, 100%);
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.captivela-label,
+.captivela-metadata {
+  font-family: var(--captivela-font-mono);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+}
+
+.captivela-button,
+.captivela-input {
+  min-height: 32px;
+  border: 1px solid var(--captivela-chrome-border);
+  border-radius: var(--captivela-radius-control);
+  font: inherit;
+}
+
+.captivela-button {
+  display: inline-flex;
+  gap: var(--captivela-space-1);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--captivela-space-2);
+  color: var(--captivela-paper);
+  background: var(--captivela-blue);
+  cursor: pointer;
+}
+
+.captivela-button:hover {
+  background: var(--captivela-blue-deep);
+}
+
+.captivela-button:focus-visible,
+.captivela-input:focus-visible {
+  outline: 2px solid var(--captivela-amber);
+  outline-offset: 2px;
+}
+
+.captivela-input {
+  padding: 0 var(--captivela-space-1);
+  color: var(--captivela-chrome-fg);
+  background: transparent;
+}
+
+.captivela-panel {
+  border: 1px solid var(--captivela-chrome-border);
+  border-radius: var(--captivela-radius-panel);
+  background: var(--captivela-chrome-bg);
+}
+
+.captivela-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--captivela-space-1);
+  border: 1px solid var(--captivela-chrome-border);
+  border-radius: var(--captivela-radius-pill);
+  font-family: var(--captivela-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+}

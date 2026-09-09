@@ -1,7 +1,7 @@
 /**
  * generate_deck self-driving pipeline verification:
  * the AI calls generate_deck once with the whole plan; the tool's internal code loops page by page,
- * calling the LLM to write HTML and landing it. Page count is guaranteed by the for loop -> cures
+ * calling a configured page generator and landing its opaque artifacts. Page count is guaranteed by the for loop -> cures
  * "planned N pages but only 1 remains" for good.
  */
 import { describe, it, expect } from 'vitest'
@@ -22,11 +22,11 @@ function makeAccess(opts?: {
   const failAttempts = { ...(opts?.failAttempts ?? {}) } // pageIndex -> how many more times to fail
   const landFailOnce = new Set(opts?.landFailOnce ?? []) // these pages fail their first "landing" once (simulated conversion failure)
   let pages = 0
-  const genPageCalls: number[] = [] // records each generatePageCloud call's pageIndex
+  const genPageCalls: number[] = [] // records each generatePageArtifact call's pageIndex
   const stylesSeen: string[] = [] // records the style each page received (verifies styleSkill reached single pages)
   const landOrder: string[] = [] // records the landing order
   const imageSearchCalls: string[] = [] // records the queries searchImages was called with
-  const imagesSeen: string[][] = [] // records the images each generatePageCloud call received
+  const imagesSeen: string[][] = [] // records the images each generatePageArtifact call received
   const sidecarSaves: Array<{ topic: string; styleSkill: string; createdAt: string }> = []
   const savedTemplates: Record<
     string,
@@ -46,29 +46,30 @@ function makeAccess(opts?: {
     applyDeck: () => {},
     fitWidthPx: 1280,
     retryBackoffMs: 0,
-    generateFromHtml: async (html, mode = 'replace', _deckName?: string, insertAt?: number) => {
-      const failNo = [...landFailOnce].find((n) => html[0]?.includes(`PAGE${n}:`))
+    applyPageArtifacts: async (artifacts, mode = 'replace', _deckName?: string, insertAt?: number) => {
+      const firstId = artifacts[0]?.artifactId ?? ''
+      const failNo = [...landFailOnce].find((n) => firstId === `artifact-page-${n}`)
       if (failNo !== undefined) {
         landFailOnce.delete(failNo)
         return { ok: false, error: 'mock land fail' }
       }
       if (mode === 'insert_at') {
         pages += 1
-        landOrder.push(`insert@${insertAt}:` + html[0])
+        landOrder.push(`insert@${insertAt}:` + firstId)
         return { ok: true, pages, insertedIndex: insertAt }
       }
       if (mode === 'append') {
         const from = pages
-        pages += html.length
-        landOrder.push('append:' + html[0])
+        pages += artifacts.length
+        landOrder.push('append:' + firstId)
         return { ok: true, pages, appendedFrom: from }
       }
-      pages = html.length
-      landOrder.push('replace:' + html[0])
+      pages = artifacts.length
+      landOrder.push('replace:' + firstId)
       return { ok: true, pages }
     },
-    isCloudPageGenEnabled: async () => true,
-    generatePageCloud: async (args) => {
+    getPageGeneratorCapabilities: async () => ({ available: true }),
+    generatePageArtifact: async (args) => {
       genPageCalls.push(args.pageIndex)
       stylesSeen.push(args.style)
       imagesSeen.push([...args.images])
@@ -77,10 +78,13 @@ function makeAccess(opts?: {
         failAttempts[args.pageIndex] -= 1
         return { ok: false, error: 'transient' }
       }
-      // Return an identifiable marker (with page order); the mock landing treats it like the real cloudpptx: marker
+      // Return an identifiable opaque artifact (with page order); landing owns its interpretation.
       return {
         ok: true,
-        marker: `<!doctype html><html><body>PAGE${args.pageIndex}:${args.title}</body></html>`,
+        artifact: {
+          schema: 'captivela.page-generation-artifact/v1',
+          artifactId: `artifact-page-${args.pageIndex}`, digest: String(args.pageIndex).repeat(64).slice(0, 64),
+        },
       }
     },
     generateStyleSkill: async (a) => {
@@ -163,7 +167,7 @@ describe('generate_deck self-driven page-by-page generation', () => {
 
     const res = (await skill.executeTool(deckCall(5))) as { output: string; summary: string }
 
-    // The tool internally calls generatePageCloud once per each of the 5 pages (the AI never touches per-page work)
+    // The tool internally calls generatePageArtifact once per each of the 5 pages (the AI never touches per-page work)
     expect(genPageCalls.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
     // All 5 pages landed
     expect(getPages()).toBe(5)
@@ -180,11 +184,11 @@ describe('generate_deck self-driven page-by-page generation', () => {
     const { access, landOrder } = makeAccess()
     const skill = createSlidesSkill(access)
     await skill.executeTool(deckCall(3))
-    // First page replace, next two append, and content is in PAGE1/2/3 order
-    expect(landOrder[0]).toBe('replace:<!doctype html><html><body>PAGE1:Page 1 Title</body></html>')
+    // First page replace, next two append, and opaque artifact IDs preserve page order.
+    expect(landOrder[0]).toBe('replace:artifact-page-1')
     expect(landOrder[1]).toContain('append:')
-    expect(landOrder[1]).toContain('PAGE2')
-    expect(landOrder[2]).toContain('PAGE3')
+    expect(landOrder[1]).toContain('artifact-page-2')
+    expect(landOrder[2]).toContain('artifact-page-3')
   })
 
   it('LLM fails on one page → other pages land + tool result names the failed page to prompt a fix', async () => {
@@ -280,10 +284,9 @@ describe('generate_deck lands pages while generating + retries', () => {
     // Page 2 hangs; 1/3/4 land (later pages not blocked by page 2)
     expect(getPages()).toBe(3)
     expect(res.output).toContain('page 2 (mock fail) still failed after retry')
-    // Landed content doesn't contain PAGE2
-    expect(landOrder.some((l) => l.includes('T1'))).toBe(true)
-    expect(landOrder.some((l) => l.includes('T3'))).toBe(true)
-    expect(landOrder.some((l) => l.includes('T2'))).toBe(false)
+    expect(landOrder.some((l) => l.includes('artifact-page-1'))).toBe(true)
+    expect(landOrder.some((l) => l.includes('artifact-page-3'))).toBe(true)
+    expect(landOrder.some((l) => l.includes('artifact-page-2'))).toBe(false)
     // The progress checklist names pages precisely: page 2 is missing (not misattributed to the last page)
     const ctx = skill.buildContext?.() ?? ''
     expect(ctx).toContain('page 2 "T2"')
@@ -304,18 +307,18 @@ describe('generate_deck lands pages while generating + retries', () => {
     const res = (await skill.executeTool(deckCall(2))) as { output: string }
     expect(getPages()).toBe(2)
     expect(res.output).toContain('2/2')
-    expect(landOrder.some((l) => l.startsWith('replace:') && l.includes('PAGE1'))).toBe(true)
-    expect(landOrder.some((l) => l.startsWith('insert@1:') && l.includes('PAGE2'))).toBe(true)
+    expect(landOrder.some((l) => l === 'replace:artifact-page-1')).toBe(true)
+    expect(landOrder.some((l) => l === 'insert@1:artifact-page-2')).toBe(true)
   })
 
   it('pages that failed to land → after retry inserted back at their original position via insert_at', async () => {
-    // Page 2's HTML generates fine but the first landing (conversion) fails once
+    // Page 2's artifact compiles successfully but its first landing fails once.
     const { access, getPages, landOrder } = makeAccess({ landFailOnce: [2] })
     const skill = createSlidesSkill(access)
     const res = (await skill.executeTool(deckCall(3))) as { output: string }
     // All three pages end up present; page 2 is inserted back at index=1 via insert_at (after page 1)
     expect(getPages()).toBe(3)
-    expect(landOrder.some((l) => l.startsWith('insert@1:') && l.includes('PAGE2'))).toBe(true)
+    expect(landOrder.some((l) => l === 'insert@1:artifact-page-2')).toBe(true)
     expect(res.output).toContain('3/3')
     const ctx = skill.buildContext?.() ?? ''
     expect(ctx).toContain('all generated')
@@ -323,7 +326,7 @@ describe('generate_deck lands pages while generating + retries', () => {
 })
 
 describe('generate_deck in-tool image search', () => {
-  it('image_queries are keywords → tool searches images → real URLs passed to generatePageCloud', async () => {
+  it('image_queries are keywords → tool searches images → real URLs passed to generatePageArtifact', async () => {
     const { access, imageSearchCalls, imagesSeen } = makeAccess()
     const skill = createSlidesSkill(access)
     const call: AgentToolCall = {
@@ -368,7 +371,7 @@ describe('generate_deck in-tool image search', () => {
     await skill.executeTool(call)
     // Already a URL; searchImages should not be called
     expect(imageSearchCalls).toEqual([])
-    // generatePageCloud should receive the original URL
+    // generatePageArtifact should receive the original URL
     expect(imagesSeen[0]).toEqual([existingUrl])
   })
 
@@ -620,13 +623,15 @@ describe('generate_deck attachment gate', () => {
 describe('generate_deck content audit', () => {
   it('landed page containing template placeholder text → audit warning demands an in-place redo', async () => {
     const { access } = makeAccess()
-    // Simulate the cloud returning a page with leftover template filler
-    access.generatePageCloud = async (args) => ({
+    // Trusted compiler reports structured audit warnings without exposing artifact internals.
+    access.generatePageArtifact = async (args) => ({
       ok: true,
-      marker:
-        args.pageIndex === 2
-          ? '<!doctype html><html><body><h1>Chapter</h1><p>Copy paste fonts. Choose the only option to retain text.</p></body></html>'
-          : `<!doctype html><html><body>PAGE${args.pageIndex}: real content about the weekly numbers</body></html>`,
+      artifact: {
+        schema: 'captivela.page-generation-artifact/v1',
+        artifactId: `artifact-page-${args.pageIndex}`,
+        digest: String(args.pageIndex).repeat(64).slice(0, 64),
+      },
+      warnings: args.pageIndex === 2 ? ['contains placeholder text'] : [],
     })
     const skill = createSlidesSkill(access)
     const call: AgentToolCall = {
@@ -652,9 +657,14 @@ describe('generate_deck content audit', () => {
 
   it('pages with real content → no audit warning', async () => {
     const { access } = makeAccess()
-    access.generatePageCloud = async (args) => ({
+    access.generatePageArtifact = async (args) => ({
       ok: true,
-      marker: `<!doctype html><html><body>PAGE${args.pageIndex}: real content about the weekly numbers</body></html>`,
+      artifact: {
+        schema: 'captivela.page-generation-artifact/v1',
+        artifactId: `artifact-page-${args.pageIndex}`,
+        digest: String(args.pageIndex).repeat(64).slice(0, 64),
+      },
+      warnings: [],
     })
     const skill = createSlidesSkill(access)
     const call: AgentToolCall = {

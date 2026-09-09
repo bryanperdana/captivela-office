@@ -43,7 +43,10 @@ export function IconAiSettings(props: IconProps) {
   return (
     <Svg {...props}>
       <circle cx="8" cy="8" r="2.1" />
-      <path d="M8 1.6h0l.5 1.6a5 5 0 0 1 1.5.6l1.5-.8 1.5 1.5-.8 1.5c.3.5.5 1 .6 1.5l1.6.5v2.1l-1.6.5a5 5 0 0 1-.6 1.5l.8 1.5-1.5 1.5-1.5-.8a5 5 0 0 1-1.5.6L8 14.4h-.1l-.5-1.6a5 5 0 0 1-1.5-.6l-1.5.8-1.5-1.5.8-1.5a5 5 0 0 1-.6-1.5l-1.6-.5V7l1.6-.5c.1-.5.3-1 .6-1.5l-.8-1.5 1.5-1.5 1.5.8c.5-.3 1-.5 1.5-.6z" strokeLinejoin="round" />
+      <path
+        d="M8 1.6h0l.5 1.6a5 5 0 0 1 1.5.6l1.5-.8 1.5 1.5-.8 1.5c.3.5.5 1 .6 1.5l1.6.5v2.1l-1.6.5a5 5 0 0 1-.6 1.5l.8 1.5-1.5 1.5-1.5-.8a5 5 0 0 1-1.5.6L8 14.4h-.1l-.5-1.6a5 5 0 0 1-1.5-.6l-1.5.8-1.5-1.5.8-1.5a5 5 0 0 1-.6-1.5l-1.6-.5V7l1.6-.5c.1-.5.3-1 .6-1.5l-.8-1.5 1.5-1.5 1.5.8c.5-.3 1-.5 1.5-.6z"
+        strokeLinejoin="round"
+      />
     </Svg>
   )
 }
@@ -51,7 +54,7 @@ export function IconAiSettings(props: IconProps) {
 /**
  * Neutral AI mark: a sparkle in a rounded badge, drawn in `currentColor`.
  *
- * Replaces the upstream Genspark brand mark wherever it was user-visible (each
+ * Replaces the upstream hosted service brand mark wherever it was user-visible (each
  * app's AI panel header, the collapsed rail button, the ribbon AI group), so
  * the BYOK build carries no vendor branding for a service it does not call.
  */

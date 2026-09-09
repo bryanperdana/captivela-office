@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import logoLockup from './assets/genoffice-logo.svg'
+import { BrandLogo } from '@genoffice/ui'
 import iconDocx from './assets/file-docx.svg'
 import iconXlsx from './assets/file-xlsx.svg'
 import iconPptx from './assets/file-pptx.svg'
@@ -387,7 +387,7 @@ function ProjectPanel({ projects, selectedId, onSelect, onRefresh }: ProjectPane
 }
 
 // ── Account entry (bottom-left) ──────────────────────────
-// Currently the Genspark (gsk) login entry; to be upgraded to a signup/account system later.
+// Cloud sign-in and local preferences share this compact account surface.
 // Language switching also lives in this popup menu.
 
 const LOGIN_POLL_MS = 2500
@@ -969,7 +969,7 @@ function AccountEntry() {
             <>
               <span className="account-name">{email ? email.split('@')[0] : t('loggedIn')}</span>
               <span className="account-sub" title={email}>
-                {email || 'Genspark'}
+                {email || 'Captivela'}
               </span>
             </>
           ) : (
@@ -1858,10 +1858,10 @@ export function Home() {
   }
 
   return (
-    <div className="home">
+    <div className="home captivela-app-chrome" data-captivela-theme="light">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <img className="logo-lockup" src={logoLockup} alt="GenOffice" />
+          <BrandLogo className="logo-lockup" variant="blue" alt="Captivela" />
         </div>
 
         <nav className="sidebar-nav">

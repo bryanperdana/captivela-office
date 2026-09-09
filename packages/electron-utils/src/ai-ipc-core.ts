@@ -11,6 +11,7 @@ import {
   PROVIDER_META_BY_ID,
   redactSecrets,
   testConnection,
+  testImageGenerationCapability,
   testToolCalling,
   validateAiSettings,
   validateBaseUrl,
@@ -129,13 +130,53 @@ export async function runToolCallingCheck(
   return testToolCalling(resolved.provider, resolved.config)
 }
 
+/** `ai:test-image-generation` — a real Images API probe, independent of chat/tool checks. */
+export async function runImageGenerationCheck(
+  store: AiSettingsStore,
+  raw: unknown = {},
+): Promise<AiCheckResult> {
+  const resolved = resolveCheckRequest(store, asCheckRequest(raw))
+  if (!resolved.ok) return { ok: false, kind: 'config', error: resolved.error }
+  const record =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  const configured = store.read().imageGeneration
+  const imageModel =
+    typeof record.imageModel === 'string'
+      ? record.imageModel.trim().slice(0, AI_SETTINGS_LIMITS.model)
+      : configured?.model
+  const requestedSize = String(record.imageSize ?? '')
+  const size = (
+    ['1024x1024', '1536x1024', '1024x1536'].includes(requestedSize)
+      ? requestedSize
+      : (configured?.size ?? '1024x1024')
+  ) as '1024x1024' | '1536x1024' | '1024x1536'
+  const baseUrl =
+    resolved.config.baseUrl ??
+    (resolved.provider === 'openai' ? 'https://api.openai.com/v1' : '')
+  if (!baseUrl) return { ok: false, kind: 'config', error: 'No Images API base URL configured.' }
+  const result = await testImageGenerationCapability(
+    { baseUrl, apiKey: resolved.config.apiKey },
+    {
+      protocol: 'openai-images-v1',
+      model: imageModel || resolved.config.model,
+      size,
+      format: 'png',
+    },
+  )
+  return result.supported
+    ? { ok: true, detail: result.detail }
+    : { ok: false, kind: result.kind, error: result.error }
+}
+
 /**
  * Config for an outbound chat/stream request.
  *
  * The renderer picks the provider and may carry an edited model/base URL, but
  * the API key is always read from secure storage here — the renderer has never
  * been given one to send back. `fallbackApiKey` covers providers whose
- * credential lives elsewhere (Genspark takes it from the gsk login state).
+ * credential lives elsewhere (hosted service takes it from the gsk login state).
  */
 export function resolveRequestConfig(
   store: AiSettingsStore,
@@ -161,7 +202,9 @@ export function resolveRequestConfig(
     if (!checked.ok) return { ok: false, error: checked.error, kind: 'provider' }
     baseUrl = checked.value
   }
-  const model = (fromRenderer?.model ?? storedConfig?.model ?? '').trim().slice(0, AI_SETTINGS_LIMITS.model)
+  const model = (fromRenderer?.model ?? storedConfig?.model ?? '')
+    .trim()
+    .slice(0, AI_SETTINGS_LIMITS.model)
   const apiKey = storedConfig?.apiKey || (fallbackApiKey?.(provider) ?? '')
 
   if (!apiKey && !meta.apiKeyOptional) {

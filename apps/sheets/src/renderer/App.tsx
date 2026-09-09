@@ -938,7 +938,7 @@ export function App(): React.JSX.Element {
     // The key itself never reaches the renderer (it lives in the main process's
     // secure storage), so presence is read from the apiKeyPresent flags that
     // ai:get-settings sends alongside. Local endpoints (Ollama, an unsecured
-    // LiteLLM) need no key at all, and Genspark's comes from the gsk login
+    // LiteLLM) need no key at all, and hosted service's comes from the gsk login
     // state — when signed out the request returns an error guiding sign-in
     // rather than being intercepted here.
     if (settings.provider === 'genspark') return true

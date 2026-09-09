@@ -1,15 +1,22 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import JSZip from 'jszip'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
 
 import type { ArchiveEntry } from '../src/gateway/xlsx-package-io'
 import { assertManifestPreserved, saveWorkbookViaSidecar } from '../src/gateway/xlsx-package-io'
 import { XlsxSidecarClient } from '../src/main/xlsx-sidecar-client'
 import { buildEditFixture } from './fixture-builder'
+
+const locked = () => Object.assign(new Error('EPERM: workbook is locked'), { code: 'EPERM' })
 
 describe('saveWorkbookViaSidecar', () => {
   let directory: string
@@ -18,6 +25,11 @@ describe('saveWorkbookViaSidecar', () => {
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), 'xlsx-streaming-save-'))
     client = new XlsxSidecarClient(sidecarBinaryPath())
+  })
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(rename).mockReset().mockImplementation(actual.rename)
   })
 
   afterAll(async () => {
@@ -92,6 +104,46 @@ describe('saveWorkbookViaSidecar', () => {
     const sheet = await savedZip.file('xl/worksheets/sheet1.xml')?.async('text')
     expect(sheet).toContain('<c r="A5"><v>41</v></c>')
     expect(sheet).toContain('<c r="A6"><v>42</v></c>')
+  })
+
+  it('retries a transient Windows promotion failure', async () => {
+    const sourcePath = join(directory, 'retry-source.xlsx')
+    const targetPath = join(directory, 'retry-target.xlsx')
+    await writeFile(sourcePath, await buildEditFixture())
+    await writeFile(targetPath, 'original target')
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(rename).mockRejectedValueOnce(locked()).mockImplementation(actual.rename)
+
+    await saveWorkbookViaSidecar({
+      client,
+      sourcePath,
+      targetPath,
+      edits: [{ sheetName: 'Data', row: 0, column: 0, writeValue: true, cell: { value: 'saved' } }],
+    })
+
+    expect(rename).toHaveBeenCalledTimes(2)
+    expect((await readFile(targetPath)).subarray(0, 2).toString()).toBe('PK')
+  })
+
+  it('preserves the original after a persistent Windows promotion failure', async () => {
+    const sourcePath = join(directory, 'locked-source.xlsx')
+    const targetPath = join(directory, 'locked-target.xlsx')
+    await writeFile(sourcePath, await buildEditFixture())
+    await writeFile(targetPath, 'original target')
+    vi.mocked(rename).mockRejectedValue(locked())
+
+    await expect(
+      saveWorkbookViaSidecar({
+        client,
+        sourcePath,
+        targetPath,
+        edits: [
+          { sheetName: 'Data', row: 0, column: 0, writeValue: true, cell: { value: 'saved' } },
+        ],
+      }),
+    ).rejects.toMatchObject({ operation: 'promote', code: 'EPERM', attempts: 5 })
+
+    expect(await readFile(targetPath, 'utf8')).toBe('original target')
   })
 })
 

@@ -32,14 +32,18 @@ beforeEach(() => {
   ;(window as any).slidesApi = { deleteSlide: vi.fn(async () => [page, page]) }
 })
 
-const cloudOk = () => vi.fn(async () => ({ ok: true, marker: 'cloudpptx:/tmp/p.pptx' }))
+const generatorOk = () =>
+  vi.fn(async () => ({
+    ok: true,
+    artifact: { schema: 'captivela.page-generation-artifact/v1' as const, artifactId: 'artifact-page-2', digest: 'b'.repeat(64) },
+  }))
 
 describe('regenerate_slide', () => {
-  it('brief → cloud generates marker → calls access.regenerateSlide to land it', async () => {
-    const regenerateSlide = vi.fn(async () => ({ ok: true }))
-    const generatePageCloud = cloudOk()
+  it('brief → configured generator returns an opaque artifact → calls access.applyRegeneratedPage to land it', async () => {
+    const applyRegeneratedPage = vi.fn(async () => ({ ok: true }))
+    const generatePageArtifact = generatorOk()
     const skill = createSlidesSkill(
-      mkAccess([page, page], { regenerateSlide, generatePageCloud, retryBackoffMs: 0 }),
+      mkAccess([page, page], { applyRegeneratedPage, generatePageArtifact, retryBackoffMs: 0 }),
     )
     const r = await skill.executeTool!(
       call('regenerate_slide', {
@@ -49,26 +53,28 @@ describe('regenerate_slide', () => {
     )
     expect(r.isError).toBeUndefined()
     expect(r.mutated).toBe(true)
-    expect(generatePageCloud).toHaveBeenCalledOnce()
-    expect(regenerateSlide).toHaveBeenCalledWith(1, 'cloudpptx:/tmp/p.pptx')
+    expect(generatePageArtifact).toHaveBeenCalledOnce()
+    expect(applyRegeneratedPage).toHaveBeenCalledWith(1, { schema: 'captivela.page-generation-artifact/v1', artifactId: 'artifact-page-2', digest: 'b'.repeat(64) })
     expect(r.output).toContain('page 2')
+    expect(r.output).toContain('AI slide generation')
+    expect(r.output).not.toMatch(/cloud|gsk|sign in/i)
   })
 
   it('slideIndex out of range → errors without invoking the pipeline', async () => {
-    const regenerateSlide = vi.fn(async () => ({ ok: true }))
+    const applyRegeneratedPage = vi.fn(async () => ({ ok: true }))
     const skill = createSlidesSkill(
-      mkAccess([page], { regenerateSlide, generatePageCloud: cloudOk(), retryBackoffMs: 0 }),
+      mkAccess([page], { applyRegeneratedPage, generatePageArtifact: generatorOk(), retryBackoffMs: 0 }),
     )
     const r = await skill.executeTool!(call('regenerate_slide', { slideIndex: 3, brief: 'x' }))
     expect(r.isError).toBe(true)
-    expect(regenerateSlide).not.toHaveBeenCalled()
+    expect(applyRegeneratedPage).not.toHaveBeenCalled()
   })
 
   it('empty brief → errors', async () => {
     const skill = createSlidesSkill(
       mkAccess([page], {
-        regenerateSlide: vi.fn(async () => ({ ok: true })),
-        generatePageCloud: cloudOk(),
+        applyRegeneratedPage: vi.fn(async () => ({ ok: true })),
+        generatePageArtifact: generatorOk(),
         retryBackoffMs: 0,
       }),
     )
@@ -76,26 +82,27 @@ describe('regenerate_slide', () => {
     expect(r.isError).toBe(true)
   })
 
-  it('cloud generation fails (after 1 retry) → error passed through', async () => {
-    const generatePageCloud = vi.fn(async () => ({ ok: false, error: 'cloud timeout' }))
+  it('configured page generation fails (after 1 retry) → provider-neutral error passed through', async () => {
+    const generatePageArtifact = vi.fn(async () => ({ ok: false, error: 'generator timeout' }))
     const skill = createSlidesSkill(
       mkAccess([page], {
-        regenerateSlide: vi.fn(async () => ({ ok: true })),
-        generatePageCloud,
+        applyRegeneratedPage: vi.fn(async () => ({ ok: true })),
+        generatePageArtifact,
         retryBackoffMs: 0,
       }),
     )
     const r = await skill.executeTool!(call('regenerate_slide', { slideIndex: 0, brief: 'x' }))
     expect(r.isError).toBe(true)
-    expect(r.output).toContain('cloud timeout')
-    expect(generatePageCloud).toHaveBeenCalledTimes(2)
+    expect(r.output).toContain('generator timeout')
+    expect(r.output).not.toMatch(/cloud|gsk|sign in/i)
+    expect(generatePageArtifact).toHaveBeenCalledTimes(2)
   })
 
   it('landing fails → error passed through with a retry hint', async () => {
     const skill = createSlidesSkill(
       mkAccess([page], {
-        regenerateSlide: vi.fn(async () => ({ ok: false, error: 'conversion timeout' })),
-        generatePageCloud: cloudOk(),
+        applyRegeneratedPage: vi.fn(async () => ({ ok: false, error: 'conversion timeout' })),
+        generatePageArtifact: generatorOk(),
         retryBackoffMs: 0,
       }),
     )
@@ -104,11 +111,11 @@ describe('regenerate_slide', () => {
     expect(r.output).toContain('conversion timeout')
   })
 
-  it('htmlGenerated=true after success (native tools no longer blocked by the anti-handcrafting gate)', async () => {
+  it('validatedGenerationCompleted=true after success (native tools no longer blocked by the anti-handcrafting gate)', async () => {
     const skill = createSlidesSkill(
       mkAccess([page], {
-        regenerateSlide: vi.fn(async () => ({ ok: true })),
-        generatePageCloud: cloudOk(),
+        applyRegeneratedPage: vi.fn(async () => ({ ok: true })),
+        generatePageArtifact: generatorOk(),
         retryBackoffMs: 0,
       }),
     )

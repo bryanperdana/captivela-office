@@ -1,6 +1,6 @@
 {
   "name": "@genoffice/sheets",
-  "productName": "GenOffice Sheets",
+  "productName": "Captivela Sheets",
   "version": "0.1.0",
   "private": true,
   "description": "Cross-platform AI-native spreadsheet compatibility prototype",
@@ -11,6 +11,7 @@
     "dev:renderer": "vite --config vite.renderer.config.ts",
     "build": "npm run native:build && electron-vite build",
     "native:build": "cargo build --release --manifest-path native/xlsx-engine/Cargo.toml --config native/xlsx-engine/.cargo/config.toml",
+    "native:build:win-x64": "cargo build --release --target x86_64-pc-windows-msvc --manifest-path native/xlsx-engine/Cargo.toml --config native/xlsx-engine/.cargo/config.toml",
     "native:test": "cargo test --manifest-path native/xlsx-engine/Cargo.toml --config native/xlsx-engine/.cargo/config.toml",
     "typecheck": "tsc --noEmit",
     "test": "npm run native:test && npm run native:build && vitest run",
@@ -54,12 +55,12 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.4",
-    "electron": "^41.0.3",
+    "electron": "41.10.5",
     "electron-vite": "^5.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.1.0"
   },
-  "author": "GenOffice"
+  "author": "Captivela Office"
 }

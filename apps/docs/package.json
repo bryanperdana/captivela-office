@@ -1,6 +1,6 @@
 {
   "name": "@genoffice/docs",
-  "productName": "GenOffice Docs",
+  "productName": "Captivela Docs",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
@@ -34,7 +34,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.4",
-    "electron": "^41.0.3",
+    "electron": "41.10.5",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "jsdom": "^28.0.0",
@@ -45,11 +45,11 @@
     "vite": "^7.3.1",
     "vitest": "^4.1.0"
   },
-  "author": "GenOffice",
+  "author": "Captivela Office",
   "build": {
     "appId": "com.genoffice.docs",
-    "productName": "GenOffice Docs",
-    "electronVersion": "41.7.1",
+    "productName": "Captivela Docs",
+    "electronVersion": "41.10.5",
     "artifactName": "AIDocx-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"

@@ -4,7 +4,7 @@
  * Reference side: LibreOffice headless export to PDF → pdftoppm PNG per page (96dpi, 16:9 → 1280×720).
  *   (AppleScript batch export in the new PowerPoint for Mac is broken; LibreOffice serves as
  *   the automatable reference renderer, with PowerPoint used for manual spot checks.)
- * Our side: playwright drives the packaged GenOffice Slides (Electron) with zoom locked at 100%,
+ * Our side: playwright drives the packaged Captivela Slides (Electron) with zoom locked at 100%,
  *   clicks through the thumbnails page by page, and screenshots the canvas element .stage-rel.
  * Compare: pixelmatch per-pixel diff (bilinear-scaled to the same size first), emitting a side-by-side HTML report.
  *
@@ -62,7 +62,7 @@ function exportRef(pptx, dir) {
 }
 
 /**
- * Opens GenOffice Slides and, page by page, composites the main canvas's Konva layers into a PNG
+ * Opens Captivela Slides and, page by page, composites the main canvas's Konva layers into a PNG
  * (in-page toDataURL, unaffected by window size/zoom/DPR; output = slide logical pixels 1280×720).
  */
 async function shootOurs(pptx, dir, nSlides) {
@@ -187,7 +187,7 @@ ${rows
   .map(
     (r) => `
 <h2>${r.deck} · slide ${r.slide} · <span class="pct ${r.pct > 0.08 ? 'bad' : 'ok'}">${(r.pct * 100).toFixed(1)}% mismatch</span></h2>
-<table><tr><td>reference<br><img src="${rel(r.ref)}"></td><td>GenOffice Slides<br><img src="${rel(r.ours)}"></td><td>diff<br><img src="${rel(r.diff)}"></td></tr></table>`,
+<table><tr><td>reference<br><img src="${rel(r.ref)}"></td><td>Captivela Slides<br><img src="${rel(r.ours)}"></td><td>diff<br><img src="${rel(r.diff)}"></td></tr></table>`,
   )
   .join('')}
 `

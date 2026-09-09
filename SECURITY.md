@@ -2,10 +2,28 @@
 
 ## Reporting a Vulnerability
 
-Please report suspected vulnerabilities privately via GitHub's
-[private vulnerability reporting](https://github.com/genspark-ai/genoffice/security/advisories/new)
-on this repository. Do not open public issues for security reports. We aim to
+Please report suspected vulnerabilities through Captivela Office's
+[private vulnerability reporting](https://github.com/bryanperdana/captivela-office/security/advisories/new)
+channel. Do not open a public issue for a suspected vulnerability. We aim to
 acknowledge reports within 72 hours.
+
+Do not include real API keys, access tokens, private documents, or other
+sensitive user data in a report. Use synthetic credentials and redacted sample
+files whenever possible.
+
+## Supported Versions
+
+Captivela Office 0.5.x is a developer preview. Security fixes are applied to
+the latest commit on the active release branch; older preview artifacts are not
+guaranteed to receive backports.
+
+## Binary Trust Status
+
+The 0.5.0 preview installers are not yet Authenticode-signed (Windows) or
+Developer ID-signed and notarized (macOS). Source availability does not make an
+unsigned binary trusted. Download artifacts only from the official GitHub
+Release, compare the published SHA-256 value, and do not disable Gatekeeper or
+Windows security globally.
 
 ## Process Security Posture
 
@@ -19,8 +37,10 @@ All application windows run with the full Electron renderer lockdown:
   (`@genoffice/electron-utils` → `safeExternalUrl`) that parses the URL and
   enforces a protocol allowlist (http/https; pdf link annotations additionally
   allow mailto). `file:`, `javascript:`, and custom schemes are always rejected.
-- No API keys are hardcoded. AI requests are proxied through the signed-in
-  account by default; user-supplied keys stay in the OS-level settings store.
+- No API keys are hardcoded. Fresh installs use user-configured
+  OpenAI-compatible providers. Keys are encrypted with Electron `safeStorage`,
+  resolved in the trusted main process, and represented to renderers only by a
+  stored-key marker.
 
 ## Threat Model: AI-Generated Layout Scripts (slides)
 

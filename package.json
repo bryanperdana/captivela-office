@@ -5,12 +5,12 @@
   "description": "AI-native office suite (docs, sheets, slides, pdf)",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20",
+    "node": ">=22.13.0",
     "npm": ">=10"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/genspark-ai/genoffice.git"
+    "url": "git+https://github.com/bryanperdana/captivela-office.git"
   },
   "workspaces": [
     "apps/*",
@@ -19,6 +19,7 @@
   "scripts": {
     "format": "node tools/format-changed.mjs --write",
     "format:check": "node tools/format-changed.mjs --check",
+    "brand:validate": "node tools/validate-brand.mjs",
     "lint": "eslint .",
     "fixtures": "npm run fixtures -w @genoffice/docx-engine",
     "test": "npm run test -w @genoffice/i18n && npm run test -w @genoffice/electron-utils && npm run test -w @genoffice/docx-engine && npm run test -w @genoffice/file-parse && npm run test -w @genoffice/pptx-engine && npm run test -w @genoffice/pptx-render && npm run test -w @genoffice/ai-search && npm run test -w @genoffice/agent-core && npm run test -w @genoffice/ai-provider && npm run test -w @genoffice/project-store && npm run test -w @genoffice/docs && npm run test -w @genoffice/sheets && npm run test -w @genoffice/shell && npm run test -w @genoffice/slides && npm run test -w @genoffice/pdf",
@@ -29,16 +30,26 @@
     "build:all": "npm run build -w @genoffice/docs && npm run build -w @genoffice/sheets && npm run build -w @genoffice/slides && npm run build -w @genoffice/pdf && npm run build -w @genoffice/shell",
     "shell": "npm run build:all && electron apps/shell",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "audit:brand": "node tools/audit-captivela-branding.mjs",
+    "verify:captivela": "npm run audit:brand && npm run typecheck && npm test && npm run build:all",
     "notices": "node tools/gen-third-party-notices.mjs",
     "licenses": "node tools/check-licenses.mjs",
     "dist:mac": "npm run notices && npm run build:all && npm run dist:mac -w @genoffice/shell",
-    "dist:win": "npm run notices && npm run build:all && npm run dist:win -w @genoffice/shell",
+    "verify:win:inputs": "node tools/windows-package-inputs.cjs",
+    "test:win:packaging": "node --test tools/windows-package-inputs.test.cjs",
+    "pack:win:x64": "npm run notices && npm run build:all && npm run verify:win:inputs && npm run pack:win:x64 -w @genoffice/shell",
+    "dist:win": "npm run notices && npm run build:all && npm run verify:win:inputs && npm run dist:win -w @genoffice/shell",
     "dist:linux": "npm run notices && npm run build:all && npm run dist:linux -w @genoffice/shell"
   },
   "dependencies": {
     "ws": "^8.21.1"
   },
+  "overrides": {
+    "js-yaml": "4.3.1",
+    "nanoid": "5.1.16"
+  },
   "devDependencies": {
+    "@electron-internal/extract-zip": "1.0.5",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "concurrently": "^9.2.4",

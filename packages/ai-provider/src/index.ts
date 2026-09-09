@@ -1,6 +1,7 @@
 export type {
   AiChatRequest,
   AiChatResponse,
+  AiImageGenerationSettings,
   AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
@@ -33,12 +34,7 @@ export {
   validateBaseUrl,
 } from './settings'
 export type { Validated } from './settings'
-export {
-  TOOL_CALL_PROBE,
-  classifyProviderError,
-  testConnection,
-  testToolCalling,
-} from './compat'
+export { TOOL_CALL_PROBE, classifyProviderError, testConnection, testToolCalling } from './compat'
 export type {
   AiCheckFailureKind,
   AiCheckOptions,
@@ -57,3 +53,27 @@ export {
   createStreamWatchdog,
 } from './watchdog'
 export type { StreamWatchdog } from './watchdog'
+export {
+  IMAGE_GENERATION_LIMITS,
+  ImageGenerationError,
+  classifyImageGenerationError,
+  generateImage,
+  normalizeImageGenerationEndpoint,
+  testImageGenerationCapability,
+  validateImageGenerationConfig,
+  validateImageGenerationProvider,
+  validateImageGenerationRequest,
+} from './image-generation'
+export type {
+  GeneratedImageFormat,
+  GeneratedImageSize,
+  ImageGenerationCapabilityFailureKind,
+  ImageGenerationCapabilityResult,
+  ImageGenerationConfig,
+  ImageGenerationErrorKind,
+  ImageGenerationOptions,
+  ImageGenerationPayload,
+  ImageGenerationProtocol,
+  ImageGenerationProvider,
+  ImageGenerationRequest,
+} from './image-generation'

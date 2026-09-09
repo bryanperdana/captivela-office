@@ -60,6 +60,8 @@ export const AI_SETTINGS_DIALOG_CSS = `
 .byok-field-hint { font-size: 11px; color: #6b7280; }
 .byok-field-row { display: flex; gap: 6px; align-items: center; }
 .byok-field-row input { flex: 1; }
+.byok-checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.byok-settings .byok-checkbox-field input { width: auto; margin: 0; }
 .byok-settings input,
 .byok-settings select,
 .byok-settings textarea {
@@ -104,6 +106,12 @@ export const AI_SETTINGS_DIALOG_CSS = `
 .byok-check-report.fail { border-color: #e2a1a1; background: #fdf3f3; }
 .byok-check-title { font-weight: 600; font-size: 12px; }
 .byok-check-detail { font-size: 11px; color: #4b5563; word-break: break-word; }
+.byok-image-check-report:empty { display: none; }
+.byok-image-check-report .byok-check-detail {
+  max-height: 88px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
 .byok-section { display: flex; flex-direction: column; gap: 10px; }
 .byok-section-title {
   font-weight: 600;

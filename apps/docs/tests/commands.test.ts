@@ -86,7 +86,9 @@ function fixtureDoc(): JsonNode[] {
         docxIndex: 0,
       },
     ),
-    para([text('GenSpark intro,'), text('GenSpark is great', [{ type: 'bold' }])], { docxIndex: 1 }),
+    para([text('GenSpark intro,'), text('GenSpark is great', [{ type: 'bold' }])], {
+      docxIndex: 1,
+    }),
     heading([text('Risk Notes')], 2, { docxIndex: 2 }),
     para([text('Body paragraph')], { docxIndex: 3, align: 'center' }),
     listItem([text('List item')], { docxIndex: 4, numId: '1' }),
@@ -133,7 +135,9 @@ describe('updateTextStyle', () => {
   it('null clears one attr, keeping the others; mark removed when all attrs empty', () => {
     const editor = createEditor([
       para([
-        text('red text', [{ type: 'docTextStyle', attrs: { color: 'FF0000', sizeHalfPoints: 24 } }]),
+        text('red text', [
+          { type: 'docTextStyle', attrs: { color: 'FF0000', sizeHalfPoints: 24 } },
+        ]),
       ]),
       para([text('color only', [{ type: 'docTextStyle', attrs: { color: '00FF00' } }])]),
     ])
@@ -353,12 +357,12 @@ describe('replaceAllText', () => {
   it('replaces every occurrence and keeps marks', () => {
     const editor = createEditor(fixtureDoc())
     const outcome = executeCommands(editor, {
-      commands: [{ replaceAllText: { containsText: 'GenSpark', replaceText: 'Genspark' } }],
+      commands: [{ replaceAllText: { containsText: 'GenSpark', replaceText: 'hosted service' } }],
     })
     expect(outcome.ok).toBe(true)
     expect(outcome.results[0].detail).toBe('共替换 2 处')
     const block = editor.state.doc.child(1)
-    expect(block.textContent).toBe('Genspark intro,Genspark is great')
+    expect(block.textContent).toBe('hosted service intro,hosted service is great')
     const boldChild = block.child(block.childCount - 1)
     expect(boldChild.marks.some((m) => m.type.name === 'bold')).toBe(true)
   })
@@ -520,7 +524,7 @@ describe('transaction atomicity and aiChanged', () => {
             fields: ['color'],
           },
         },
-        { replaceAllText: { containsText: 'GenSpark', replaceText: 'Genspark' } },
+        { replaceAllText: { containsText: 'GenSpark', replaceText: 'hosted service' } },
         { deleteBlocks: { target: { blockIndexes: [3] } } },
       ],
     })

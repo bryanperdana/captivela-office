@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconAiMark } from '@genoffice/ui'
 
-import {
-  CaretIcon,
-  RIBBON_GLYPH_ICONS,
-  RedoIcon,
-  SaveIcon,
-  UndoIcon,
-} from './ribbon-icons'
+import { CaretIcon, RIBBON_GLYPH_ICONS, RedoIcon, SaveIcon, UndoIcon } from './ribbon-icons'
 
 import { FormatCellsDialog } from './FormatCellsDialog'
 import { GoToDialog } from './GoToDialog'
@@ -318,7 +312,7 @@ export function ExcelShell({
     : ribbonTabs
 
   return (
-    <main className={`app-shell ${isCopilotOpen ? '' : 'copilot-collapsed'}`}>
+    <main className={`app-shell captivela-app-chrome ${isCopilotOpen ? '' : 'copilot-collapsed'}`}>
       <header className="excel-header">
         <nav
           className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}`}

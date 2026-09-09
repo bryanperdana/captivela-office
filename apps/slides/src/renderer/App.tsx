@@ -2172,7 +2172,7 @@ export function App() {
   const _fileName = slide ? path?.split('/').pop() || t('appUntitledPresentation') : undefined
 
   return (
-    <div className="app">
+    <div className="app captivela-app-chrome">
       <ToastHost />
       <Ribbon
         hasDoc={!!slide}

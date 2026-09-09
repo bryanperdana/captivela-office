@@ -5,6 +5,7 @@
  * path (proving fidelity). Element-level patch regeneration is left for Phase 3.
  */
 import JSZip from 'jszip'
+import { atomicWriteFileWithWriter } from '@genoffice/electron-utils/atomic-file'
 import { PackageArchive, relsPathFor, resolveTarget } from './zip'
 import { parseTheme, type Theme } from './theme'
 import { parseSlide, parseDecorations, sliceGroupChildXmls, type ParseContext } from './parse'
@@ -518,15 +519,17 @@ export async function savePptx(opened: OpenedPptx): Promise<Uint8Array> {
  * throw escapes as an uncaught exception and takes the process down.
  */
 export async function savePptxToFile(opened: OpenedPptx, filePath: string): Promise<void> {
-  const { createWriteStream } = await import('node:fs')
-  const { pipeline } = await import('node:stream/promises')
-  const source = buildZip(opened).generateNodeStream({
-    type: 'nodebuffer',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 },
-    streamFiles: true,
+  await atomicWriteFileWithWriter(filePath, async (temporaryPath) => {
+    const { createWriteStream } = await import('node:fs')
+    const { pipeline } = await import('node:stream/promises')
+    const source = buildZip(opened).generateNodeStream({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+      streamFiles: true,
+    })
+    await pipeline(source, createWriteStream(temporaryPath))
   })
-  await pipeline(source, createWriteStream(filePath))
 }
 
 /**

@@ -1,11 +1,12 @@
 /**
- * Shared main-process state for GenOffice Slides, extracted from slides-main.ts so
+ * Shared main-process state for Captivela Office Slides, extracted from slides-main.ts so
  * the IPC modules (slides-main, ai-ipc, presenter-show) can share it:
  * per-renderer sessions, snapshot undo/redo history, runtime paths, window
  * references, and RenderSlide rebuild helpers.
  */
 import { BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { materializeSlide, type OpenedPptx, type Slide } from '@genoffice/pptx-engine'
 import {
@@ -41,6 +42,10 @@ export interface Session {
   fitWidthPx: number
   undoStack: HistorySnapshot[]
   redoStack: HistorySnapshot[]
+  /** Monotonic optimistic-concurrency token for asynchronous generated artifacts. */
+  revision?: number
+  /** Immutable identity for this logical deck session; artifacts are bound to it. */
+  generationSessionId?: string
   /** Nested history transaction used to collapse an AI tool/run into one undo step. */
   historyBatch?: {
     depth: number
@@ -60,6 +65,19 @@ export interface Session {
   masterEdit?: { partPath: string; slide: Slide } | null
 }
 export const sessions = new Map<number, Session>()
+
+export function sessionRevision(session: Session): number {
+  return session.revision ?? 0
+}
+
+export function sessionGenerationId(session: Session): string {
+  return (session.generationSessionId ??= randomUUID())
+}
+
+export function bumpSessionRevision(session: Session): number {
+  session.revision = sessionRevision(session) + 1
+  return session.revision
+}
 
 // ── Undo/redo (snapshot-based) ─────────────────────────────────────────
 // The document's source of truth lives in the main process (deck.slides mutated in place +
@@ -96,6 +114,7 @@ function cloneSnapshot(snap: HistorySnapshot): HistorySnapshot {
 
 /** Call before an edit operation: push onto the undo stack and clear the redo stack. */
 export function pushHistory(session: Session): void {
+  bumpSessionRevision(session)
   session.undoStack.push(takeSnapshot(session))
   trimHistory(session.undoStack)
   session.redoStack = []
@@ -145,6 +164,7 @@ export function carryHistoryForReplacement(
   replacement.redoStack = previous.redoStack
   replacement.historyBatch = previous.historyBatch
   replacement.aiSnapshots = previous.aiSnapshots
+  replacement.revision = sessionRevision(previous)
 }
 
 const MAX_AI_SNAPSHOTS = 20
@@ -170,6 +190,7 @@ export function restoreAiSnapshot(session: Session, id: number): boolean {
 }
 
 export function restoreSnapshot(session: Session, snap: HistorySnapshot): void {
+  bumpSessionRevision(session)
   // Clone: the live deck mutates elements in place, so handing a snapshot's own
   // arrays over would let later edits rewrite history still referenced by the
   // other stack (undo → edit → redo would replay mutated state).

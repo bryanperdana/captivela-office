@@ -16,6 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@genoffice/electron-utils": "*",
     "fast-xml-parser": "^5.3.4",
     "jszip": "^3.10.1"
   },

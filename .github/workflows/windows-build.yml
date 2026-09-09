@@ -1,0 +1,213 @@
+name: Windows x64 Build
+
+on:
+  workflow_call:
+    secrets:
+      WINDOWS_CSC_LINK:
+        required: false
+      WINDOWS_CSC_KEY_PASSWORD:
+        required: false
+    inputs:
+      signed:
+        description: 'Require Authenticode signing (public-release gate)'
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: 'Exact commit to package'
+        required: false
+        type: string
+        default: ''
+      expected_commit:
+        description: 'Commit SHA that checkout must resolve to'
+        required: false
+        type: string
+        default: ''
+      version:
+        description: 'Expected application version'
+        required: false
+        type: string
+        default: ''
+      artifact_key:
+        description: 'Stable artifact-name suffix for callers'
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      signed:
+        description: 'Require Authenticode signing (public-release gate)'
+        required: true
+        type: boolean
+        default: false
+  push:
+    branches: ['release/windows-x64']
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-build.yml'
+      - 'apps/shell/**'
+      - 'apps/docs/**'
+      - 'apps/pdf/**'
+      - 'apps/sheets/**'
+      - 'apps/slides/**'
+      - 'packages/electron-utils/**'
+      - 'packages/pptx-engine/**'
+      - 'tools/windows-*'
+      - 'tools/qa-windows-package.ps1'
+      - 'tools/qa-packaged-captivela.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+
+concurrency:
+  group: windows-x64-${{ github.ref }}-${{ inputs.artifact_key || 'build' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SIGNED_RELEASE: ${{ inputs.signed || false }}
+      CAPTIVELA_OFFICE_RELEASE_SIGNING: ${{ inputs.signed && '1' || '0' }}
+      CSC_LINK: ${{ inputs.signed && secrets.WINDOWS_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ inputs.signed && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify source identity and version
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          $actualCommit = git rev-parse HEAD
+          $actualVersion = node -p "require('./apps/shell/package.json').version"
+          if ($env:EXPECTED_COMMIT -and $actualCommit -ne $env:EXPECTED_COMMIT) {
+            throw "Checked out $actualCommit, expected $env:EXPECTED_COMMIT"
+          }
+          if ($env:EXPECTED_VERSION -and $actualVersion -ne $env:EXPECTED_VERSION) {
+            throw "Package version $actualVersion, expected $env:EXPECTED_VERSION"
+          }
+          @(
+            "commit=$actualCommit"
+            "version=$actualVersion"
+            "runner_arch=x64"
+          ) | Set-Content -Encoding utf8 build-source.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Rust MSVC
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch, 2026-07
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo (xlsx-sidecar)
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: apps/sheets/native/xlsx-engine
+          key: windows-x64-msvc
+
+      - name: Require signing credentials for signed runs
+        if: env.SIGNED_RELEASE == 'true'
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw 'Signed Windows release requested but WINDOWS_CSC_LINK or WINDOWS_CSC_KEY_PASSWORD is missing.'
+          }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify packaging contract tests
+        run: npm run test:win:packaging
+
+      - name: Build Windows x64 XLSX sidecar
+        run: npm run native:build:win-x64 -w @genoffice/sheets
+
+      - name: Generate notices and build all modules
+        run: |
+          npm run notices
+          npm run build:all
+
+      - name: Verify Windows package inputs
+        run: npm run verify:win:inputs
+
+      - name: Package NSIS installer
+        run: npm run dist:win -w @genoffice/shell
+
+      - name: Runtime and package QA
+        shell: pwsh
+        run: ./tools/qa-windows-package.ps1
+
+      - name: Stage and verify Windows release assets
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:EXPECTED_VERSION) { $env:EXPECTED_VERSION } else { node -p "require('./apps/shell/package.json').version" }
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Copy-Item "apps/shell/release/Captivela Office Setup $version.exe" release-assets/
+          Copy-Item "apps/shell/release/Captivela Office Setup $version.exe.blockmap" release-assets/
+          node tools/verify-release-assets.mjs --dir release-assets --version $version --platform windows --write-manifest
+
+      - name: Verify Authenticode signatures
+        if: env.SIGNED_RELEASE == 'true'
+        shell: pwsh
+        run: |
+          $files = @(
+            'apps/shell/release/win-unpacked/Captivela Office.exe',
+            (Get-ChildItem 'apps/shell/release' -Filter 'Captivela Office Setup *.exe' -File | Select-Object -First 1).FullName
+          )
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -FilePath $file
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature for $file: $($signature.Status)"
+            }
+          }
+
+      - name: Upload verified Windows release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-windows-x64-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: release-assets/**
+
+      - name: Upload Windows QA evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-windows-qa-${{ inputs.artifact_key || github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            apps/shell/release/latest.yml
+            artifacts/windows-qa/**
+            build-source.txt
+
+      - name: Upload runtime diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-windows-x64-failure-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            apps/shell/release/builder-debug.yml
+            apps/shell/release/builder-effective-config.yaml
+            artifacts/windows-qa/**
+            e2e/artifacts/**
+            e2e/test-results/**

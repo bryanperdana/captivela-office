@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { htmlLang, type Lang } from '@genoffice/i18n'
+import '@genoffice/ui/brand.css'
 import App from './App'
 import { LocaleProvider } from './i18n/locale'
 import './styles.css'

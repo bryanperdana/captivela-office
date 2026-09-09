@@ -35,7 +35,7 @@ const PASTE_MIME_EXT: Record<string, string> = {
   'image/webp': 'webp',
 }
 
-/** File-type icons for attachment cards (Genspark attachment icon set); exts the
+/** File-type icons for attachment cards (hosted service attachment icon set); exts the
  *  attachment allowlist doesn't accept yet are mapped ahead so they light up when added */
 const ATTACHMENT_CARD_ICON_GROUPS: [icon: string, exts: string[]][] = [
   [fileWordIcon, ['doc', 'docx']],
@@ -147,7 +147,7 @@ export interface AiChatMessage {
   readonly isError?: boolean | undefined
   /** the run failed and this user message was rolled back out of the model context */
   readonly undelivered?: boolean | undefined
-  /** the run failed because Genspark is signed out — render an inline sign-in button */
+  /** the run failed because hosted service is signed out — render an inline sign-in button */
   readonly loginRequired?: boolean | undefined
   /** Set when this message reflects an auto-applied plan; renders an inline [Undo] button. */
   readonly autoApplied?: { readonly opCount: number } | undefined
@@ -213,7 +213,7 @@ export function AiChatPanel({
   const [dragOver, setDragOver] = useState(false)
   const asideRef = useRef<HTMLElement | null>(null)
   const [resizing, setResizing] = useState(false)
-  /** data-URL previews for image attachments, keyed by path (Genspark composer thumbnails) */
+  /** data-URL previews for image attachments, keyed by path (hosted service composer thumbnails) */
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({})
   /** image paths with a read already issued — one readAttachmentImage per attach, even while pending */
   const previewRequestedRef = useRef(new Set<string>())

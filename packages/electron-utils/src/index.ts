@@ -24,12 +24,35 @@ export { fetchRemoteImage, remoteImageHeaders } from './remote-image'
 export { createAiSettingsStore } from './ai-settings-store'
 export type { AiSettingsStore, AiSettingsStoreOptions, SecretCipher } from './ai-settings-store'
 export {
+  AtomicFileSaveError,
+  atomicWriteFile,
+  atomicWriteFileWithWriter,
+  promoteFileAtomically,
+  type AtomicFileOperation,
+  type AtomicFileOptions,
+  type AtomicWriteFileOptions,
+} from './atomic-file'
+export {
   clearApiKeyFromRenderer,
   getSettingsForRenderer,
   redactRequestError,
   resolveRequestConfig,
   runConnectionCheck,
+  runImageGenerationCheck,
   runToolCallingCheck,
   setSettingsFromRenderer,
 } from './ai-ipc-core'
 export type { IpcResult } from './ai-ipc-core'
+export {
+  CAPTIVELA_DEV_USER_DATA_DIRNAME,
+  CAPTIVELA_DOCUMENTS_DIRNAME,
+  CAPTIVELA_PRODUCT_NAME,
+  LEGACY_DOCUMENTS_DIRNAME,
+  ensureProductDocumentsDir,
+  legacyDocumentsDir,
+  migrateLegacyDirectory,
+  productDevUserDataDir,
+  productDocumentsDir,
+  readProductEnvironment,
+  type ProductEnvironment,
+} from './product-paths'

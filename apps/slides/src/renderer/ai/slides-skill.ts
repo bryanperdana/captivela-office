@@ -62,6 +62,22 @@ export type DeckProgressEvent =
   | { stage: 'done'; total: number; summary: string }
 
 /** Panel/skill access point to the currently open deck (refs provided by App, stay fresh across renders). */
+export interface PageGenerationArtifactV1 {
+  schema: 'captivela.page-generation-artifact/v1'
+  /** Main-process-owned opaque identifier. Never HTML, OOXML, JavaScript, or a filesystem path. */
+  artifactId: string
+  /** SHA-256 digest supplied by the trusted compiler/artifact store. */
+  digest: string
+}
+
+export interface PageGenerationResult {
+  ok: boolean
+  artifact?: PageGenerationArtifactV1
+  /** Structured validator/compiler audit warnings; never inferred by inspecting the opaque artifact. */
+  warnings?: string[]
+  error?: string
+}
+
 export interface DeckAccess {
   getSlides(): RenderSlide[]
   getCurrent(): number
@@ -75,12 +91,9 @@ export interface DeckAccess {
    * memory, never persisted or journaled.
    */
   onProgress?(event: DeckProgressEvent): void
-  /** HTML→PPTX pipeline: several pages of HTML → generate editable native elements and replace/append the current deck. Returns total page count or an error.
-   *  mode="insert_at" inserts a single HTML page at position insertAt (later pages shift) — used to re-insert failed pages at their original position.
-   *  On pipeline failure it automatically falls back to element-level mode; fallbackReason explains why (ok is still true).
-   *  deckName = presentation name derived from user input, used as the file name when the new draft is saved (instead of "Untitled-timestamp"). */
-  generateFromHtml?(
-    pagesHtml: string[],
+  /** Land trusted compiler artifacts into the deck. The renderer never receives bytes or paths. */
+  applyPageArtifacts?(
+    artifacts: PageGenerationArtifactV1[],
     mode?: 'replace' | 'append' | 'insert_at',
     deckName?: string,
     insertAt?: number,
@@ -89,14 +102,17 @@ export interface DeckAccess {
     pages?: number
     appendedFrom?: number
     insertedIndex?: number
+    /** Updated optimistic-concurrency token after a successful atomic landing. */
+    revision?: number
     error?: string
+    /** Compatibility warning only; trusted local compiler should normally omit this. */
     fallbackReason?: string
     imageFailures?: { page: number; url: string }[]
   }>
-  /** Redo one slide in place: single-page HTML → convert → replace slide slideIndex (other slides untouched; undoable with ⌘Z). */
-  regenerateSlide?(
+  /** Replace one slide with a trusted compiler artifact; other slides remain untouched and undoable. */
+  applyRegeneratedPage?(
     slideIndex: number,
-    html: string,
+    artifact: PageGenerationArtifactV1,
   ): Promise<{ ok: boolean; error?: string; imageFailures?: { page: number; url: string }[] }>
   /** Survey: shows a card with options and waits for the user's choices, returning an answer summary. */
   askClarification?(questions: ClarifyQuestion[]): Promise<{ answers: string; cancelled?: boolean }>
@@ -106,15 +122,10 @@ export interface DeckAccess {
    * On search failure returns an empty array (fail-open; doesn't block the main generation path).
    */
   searchImages?(query: string, maxResults: number): Promise<string[]>
-  /** Whether cloud single-page generation is available (kill switch + gsk login state) */
-  isCloudPageGenEnabled?(): Promise<boolean>
-  /**
-   * Cloud single-page generation (gsk slide_generate), used by generate_deck's self-driven
-   * pipeline: given the unified style + this page's brief/layout/images, the cloud service
-   * writes the HTML and converts it to a one-slide pptx. Returns a marker string that goes
-   * into a generateFromHtml pagesHtml slot.
-   */
-  generatePageCloud?(args: {
+  /** Capabilities for the configured BYOK recipe generator + trusted local compiler. */
+  getPageGeneratorCapabilities?(): Promise<{ available: boolean; reason?: string }>
+  /** Generate and locally compile one page into a main-process-owned opaque artifact. */
+  generatePageArtifact?(args: {
     pageIndex: number
     totalPages: number
     coreHook: string
@@ -128,7 +139,7 @@ export interface DeckAccess {
     canvasW: number
     canvasH: number
     signal?: AbortSignal
-  }): Promise<{ ok: boolean; marker?: string; error?: string }>
+  }): Promise<PageGenerationResult>
   /**
    * In-tool Style Skill generation:
    * a dedicated LLM call focused on producing a complete structured visual style guide
@@ -206,16 +217,16 @@ export interface ClarifyQuestion {
   multi?: boolean
 }
 
-const AGENT_SYSTEM_PROMPT = `You are the AI assistant inside GenOffice Slides (a slide editor), helping users improve and generate presentations.
+const AGENT_SYSTEM_PROMPT = `You are the AI assistant inside Captivela Slides (a slide editor), helping users improve and generate presentations.
 
 ## Most important tool-selection principles (judge the scenario before acting)
 - **Creating a whole new deck (from scratch)** → first gather material (web_search) and images (image_search), then call **generate_deck**. With many pages, prefer **passing topic + approx_pages + context (the real material you found)** and let the system plan internally + generate page by page + display page by page (**you don't hand-write dozens of pages, and no pages get missed / arguments truncated**). For few pages where you already know each page, you may pass core_hook+style+pages directly.
-- **Adding 1 page or a few pages to an existing deck** → generate_deck(pages: briefs for just the new pages, insert_mode:"append"). Write each page's brief in detail (real content/data per region + layout); first look at the existing pages (get_deck_context) and pass a style description matching them so new pages stay consistent. **Even a single new page goes through this cloud generation; don't fall back to native tools and build a crude page**.
-- **Redoing / redesigning an existing page** (user says "redo this page / redesign it / try another layout / make it prettier") → **regenerate_slide**: first read_slide to get the page's original copy, then pass a detailed brief (copy the text/data to keep into the brief verbatim, state what to change and the target layout); the cloud service regenerates the page in place (other pages untouched). Don't dismantle and rebuild the whole page element by element with native tools.
+- **Adding 1 page or a few pages to an existing deck** → generate_deck(pages: briefs for just the new pages, insert_mode:"append"). Write each page's brief in detail (real content/data per region + layout); first look at the existing pages (get_deck_context) and pass a style description matching them so new pages stay consistent. **Even a single new page goes through the validated recipe + local compiler path; don't fall back to native tools and build a crude page**.
+- **Redoing / redesigning an existing page** (user says "redo this page / redesign it / try another layout / make it prettier") → **regenerate_slide**: first read_slide to get the page's original copy, then pass a detailed brief (copy the text/data to keep into the brief verbatim, state what to change and the target layout); the local compiler regenerates the page in place (other pages untouched). Don't dismantle and rebuild the whole page element by element with native tools.
 - **Deleting a page** → delete_slide(slideIndex).
 - **Modifying / fine-tuning existing elements** (position/size/alignment/distribution/relative nudges/text/style/fill/stroke, one or many elements) → always prefer **execute_slide_script** and do it in one script (see "Editing existing elements" below; read-write combined, no read_slide first). Don't blind-fire individual set_element_* calls. Add/delete elements with add_* / delete_element; redo a whole page with regenerate_slide.
 - **Elements inside a group**: direct children of a top-level group (marked "in group <id>" / els groupId) are edited exactly like normal elements — same script primitives and set_element_* tools, absolute coordinates. Only elements nested in a sub-group are read-only: call ungroup_element on the outer group first (ids on the page change afterwards; the result returns the fresh list). To delete a single group member, ungroup first too.
-- **Key constraint**: after cloud generation, do **not** use native tools to "polish/redo" a generated page — the output is the final good-looking result. Only when the user asks for a specific change should you edit the corresponding element with native tools; if they ask to redo the whole page, use regenerate_slide.
+- **Key constraint**: after validated generation, do **not** use native tools to "polish/redo" a generated page automatically. Only when the user asks for a specific change should you edit the corresponding element with native tools; if they ask to redo the whole page, use regenerate_slide.
 - **When the user attached files (see the "attachment list" in each turn's context)**: first read all text attachments with read_attachment (paginate long files); image attachments were already sent as images with the message, just look at them. Only **then** plan/generate the deck — content should come from the attachments first. When calling generate_deck, put the key content you read into the context argument; no need to web_search information the attachments already cover. **This is enforced: generate_deck refuses to run while any text attachment is still unread.**
 
 Rules:
@@ -240,21 +251,21 @@ Forbidden: running read_slide "just to get coordinates" and then stopping, blind
 - Omit fontFamily by default (inherits the theme, keeps the deck consistent — recommended); only specify it when the user names a font.
 - Keep slide copy concise: punchy titles, bulleted body. Don't rewrite bullets into long sentences unless asked.
 
-Generating a whole deck / adding pages (HTML pipeline first):
+Generating a whole deck / adding pages (validated recipe + local compiler first):
 
-[Plan before generating a whole deck — you are a professional deck planner; plan first, then write HTML (this decides the output quality)]
+[Plan before generating a whole deck — you are a professional deck planner; plan semantic content and layout intent before compilation]
 
 Step 0 Questionnaire (mandatory when creating a whole new deck): first call ask_clarification to show a questionnaire card with 2–4 key trade-off questions for this topic (audience, usage scenario, tone/style, content focus), each with genuinely different options. **The user's choices directly determine the deck's Core Hook and style**; do the planning below only after getting the answers. (Ask only for a whole new deck; adding a few pages or editing needs no questionnaire. The card shows automatically — don't repeat the questions in your reply text.)
 
 Step A Research: when the topic involves facts/attractions/data, run web_search 1–2 times first for real content. **Use real data and facts in the design; no "XX%" or placeholder names**.
-Step B Image strategy: with generate_deck you **don't need image_search in advance** — the system auto-searches internally per page from the planned image_queries keywords and fills real URLs back (each keyword searched once, deduped across pages). **Travel/product/people/brand decks get images by default without the user asking; never fake images with CSS placeholders — slots needing images must be filled with real ones**. Only when redoing a page via regenerate_slide or adding images to existing pages via insert_web_image do you image_search yourself first (English keywords describing a concrete scene like "summer palace kunming lake", not generic words like "park").
-Step C Unified style: first define one design system for the whole deck — primary/secondary colors, title and body font-size scale, content margins, card/corner style (e.g. "teal primary + cream background + sans-serif fresh look"). **Every page's HTML strictly follows the same system; style must be consistent across pages**.
-Step D Generate (call generate_deck): with many pages pass topic + approx_pages + context (feed in the real material from Step A) and let the system plan internally; with few pages you may pass core_hook+style+pages directly (image_queries takes English image-search keywords; **the system auto-searches internally and fills real URLs back**, no image_search needed in advance). The system writes HTML page by page and lands pages as they generate; you don't hand-write HTML.
+Step B Image strategy: image_queries describe intended image slots. In the safe local-compiler MVP unresolved images render as explicit editable placeholders; use insert_web_image later when the user requires a real image.
+Step C Unified style: first define one design system for the whole deck — primary/secondary colors, title and body font-size scale, content margins, card/corner style. Every page recipe must follow the same system.
+Step D Generate (call generate_deck): with many pages pass topic + approx_pages + context (feed in the real material from Step A) and let the system plan internally; with few pages you may pass core_hook+style+pages directly. The system validates a semantic recipe and compiles each page locally; you never hand-write executable markup.
 Step E Vary layouts per page (avoid sameness): 3 parallel points→three-column cards; a key number→big-number hero; comparison→two columns; sequence→timeline; image+text→left-text-right-image / full-image with text overlay. **Content pages of one deck must not all use the same layout**.
 
-- **generate_deck is the first choice for a whole new deck**: with many pages pass topic+approx_pages+context; the system plans internally (auto-batching over the threshold), **auto-searches images**, writes HTML page by page, and **lands pages onto the canvas as they generate (the user sees them one by one)**. **Neither "only page 1 got generated" nor "arguments were truncated" can happen — the page count is guaranteed by the system loop**.
-- **When adding just 1 page or a few pages (common case)**: also use generate_deck with **pages (briefs for only the new pages) + insert_mode:"append"** (appended at the end, existing pages untouched). **New pages also go through the cloud generation for polish — don't fall back to native tools for a crude page just because it's one page**. Before adding, read_slide/get_deck_context to see the existing pages' style (primary color/layout) and pass a matching style description; write each brief with the real content per region.
-- Briefs should be concrete: what text/data/numbers go in each region, which image goes where, and the layout name — the cloud designer follows your brief; vague briefs produce generic pages.
+- **generate_deck is the first choice for a whole new deck**: with many pages pass topic+approx_pages+context; the system plans internally (auto-batching over the threshold), searches approved image sources, compiles a strict semantic recipe page by page, and lands each trusted artifact as it completes.
+- **When adding just 1 page or a few pages (common case)**: also use generate_deck with **pages (briefs for only the new pages) + insert_mode:"append"** (appended at the end, existing pages untouched). **New pages also go through the validated local compiler — don't fall back to native tools for a crude page just because it's one page**. Before adding, read_slide/get_deck_context to see the existing pages' style and pass a matching style description with the real content per region.
+- Briefs should be concrete: what text/data/numbers go in each region, which image goes where, and the layout name; vague briefs produce generic pages.
 - After generation, if the user wants a tweak, edit the corresponding element with the native tools below; don't redo whole pages unprompted "to look better". Use regenerate_slide only when the user explicitly asks to redo a page.
 
 Native tools (only for modifying/refining existing pages, not for generating from scratch):
@@ -505,37 +516,31 @@ const TOOLS: AgentToolDef[] = [
   {
     name: 'generate_image',
     description:
-      'AI image generation/editing (Genspark). Text-to-image, or pass referenceImageUrls for image editing; returns an image URL, then insert with insert_web_image. Use for custom illustrations/icons/backgrounds, style-consistent imagery, and edits like background removal/upscaling/outpainting; for real photos/screenshots still use image_search.',
+      'Generate an image with the user-configured BYOK Images API and insert it directly as a native picture on the target slide. No provider URL or bytes are returned. Use image_search + insert_web_image for existing real photos or screenshots.',
     inputSchema: {
       type: 'object',
       properties: {
         prompt: {
           type: 'string',
-          description:
-            'Image description, English works better (keep any text to render in the image verbatim)',
+          description: 'Image description; English usually works best. Maximum 2000 characters.',
         },
-        model: {
-          type: 'string',
-          description:
-            'Optional, defaults to the general model. Specify only for special purposes: fal-bria-rmbg=background removal, fal-ai/recraft-clarity-upscale=upscale, flux-pro/outpaint=outpaint, fal-ai/image-editing/text-removal=remove text watermark',
-        },
-        referenceImageUrls: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'URLs of reference images / images to edit (required for editing tasks)',
-        },
+        slideIndex: { type: 'integer' },
+        x: { type: 'number' },
+        y: { type: 'number' },
+        w: { type: 'number' },
+        h: { type: 'number' },
         aspectRatio: {
           type: 'string',
-          description: 'Aspect ratio: 1:1|4:3|16:9|9:16|3:4|2:3|3:2|auto',
+          description: 'Semantic aspect ratio: 1:1|16:9|9:16|3:2|2:3',
         },
       },
-      required: ['prompt'],
+      required: ['prompt', 'slideIndex', 'x', 'y', 'w', 'h'],
     },
   },
   {
     name: 'analyze_media',
     description:
-      'Analyze media content (Genspark): understand images/audio/video. Pass media URLs (or local file paths) and analysis requirements; returns analysis text. Video supports extracting key points, structure, and time ranges — good for turning user material into usable deck content.',
+      'Analyze media content (hosted service): understand images/audio/video. Pass media URLs (or local file paths) and analysis requirements; returns analysis text. Video supports extracting key points, structure, and time ranges — good for turning user material into usable deck content.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -658,7 +663,7 @@ const TOOLS: AgentToolDef[] = [
       " Flow: first read_slide to get the page's current content, then check neighboring pages / get_deck_context to grasp the deck's style;" +
       ' write a detailed brief — what to keep (copy real text/data into the brief verbatim), what to change, and the target layout; the deck style is applied automatically.' +
       ' If the page needs images, image_search first and pass real URLs in image_urls.' +
-      ' If cloud generation fails, it is usually a temporary service error: do NOT loop retrying — make the concrete changes in place with execute_slide_script instead (or tell the user to try again in a few minutes).',
+      ' If validated generation fails, do NOT loop retrying — report the compiler/provider error or make explicit in-place edits with execute_slide_script.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -700,10 +705,10 @@ const TOOLS: AgentToolDef[] = [
   {
     name: 'generate_deck',
     description:
-      '[First choice for creating a whole new deck — self-driven pipeline: auto image search, page-by-page generation with live display, no missing pages]' +
-      ' Recommended usage (especially with many pages): pass only topic + approx_pages (+ optional style/context); the system plans the outline internally (auto-batched beyond 12 pages), **auto-searches images** (no advance image_search — the system searches from the planned image_queries keywords internally and fills real URLs back before writing HTML), writes HTML page by page, and lands pages onto the canvas one by one.' +
-      ' You don\'t hand-write dozens of pages, and neither "only page 1 got generated" nor "arguments were truncated" can happen — the page count is guaranteed by the system loop.' +
-      ' (If you already know each page you may pass core_hook+style+pages directly; pages[].image_queries takes English image-search keywords, searched internally; if you already know real http(s) URLs pass them directly — the system respects existing URLs and does not re-search.)' +
+      '[First choice for creating a whole new deck — self-driven validated recipe + local compiler pipeline]' +
+      ' Recommended usage (especially with many pages): pass only topic + approx_pages (+ optional style/context); the system plans the outline internally, validates one semantic recipe per page, compiles native editable elements locally, and lands trusted artifacts one by one.' +
+      ' You do not hand-write dozens of pages or any executable markup; the system loop controls page count and ordering.' +
+      ' (If you already know each page you may pass core_hook+style+pages directly; pages[].image_queries describes intended image slots. Unresolved images remain editable placeholders in the safe local-compiler MVP.)' +
       ' To add a few pages to an existing deck, pass pages (briefs for just the new pages) + insert_mode:"append".',
     inputSchema: {
       type: 'object',
@@ -750,7 +755,7 @@ const TOOLS: AgentToolDef[] = [
                 type: 'array',
                 items: { type: 'string' },
                 description:
-                  "English image-search keywords for this page's image slots (the system searches internally and fills real URLs back); if you already know real http(s) URLs pass them directly (respected, not re-searched); [] for no images",
+                  "English image-search keywords describing this page's intended image slots; unresolved images become editable placeholders; [] for no images",
               },
             },
             required: ['title', 'brief', 'layout'],
@@ -1395,9 +1400,9 @@ export function formatSlideDump(slide: RenderSlide): string {
 }
 
 export function createSlidesSkill(access: DeckAccess): AgentSkill {
-  // The HTML pipeline was already used in this conversation → later calls without an explicit mode default to append.
+  // Validated generation already landed in this conversation → later calls without an explicit mode default to append.
   // Safety net for when the AI ignores the "pass all pages at once" constraint: separate calls no longer overwrite each other (P0-1).
-  const state: SkillState = { htmlGenerated: false }
+  const state: SkillState = { validatedGenerationCompleted: false }
   return {
     id: 'slides',
     systemPrompt: AGENT_SYSTEM_PROMPT,
@@ -1412,7 +1417,7 @@ export function createSlidesSkill(access: DeckAccess): AgentSkill {
 }
 
 interface SkillState {
-  htmlGenerated: boolean
+  validatedGenerationCompleted: boolean
   /** A web_search ran in this conversation — unlocks dataSource:'search' in the figure gate */
   webSearched?: boolean
   /** Number of pages most recently planned by plan_deck, used by the progress checklist to remind the AI to finish */
@@ -1428,20 +1433,20 @@ interface SkillState {
 }
 
 /**
- * [Hard constraint against "hand-building from scratch"] Sometimes the AI skips the HTML
- * pipeline and assembles a whole deck element by element with add_text_box/add_shape/add_smartart —
+ * [Hard constraint against "hand-building from scratch"] Sometimes the AI skips validated
+ * recipe generation and assembles a whole deck element by element with add_text_box/add_shape/add_smartart —
  * such hand-built pages look crude and the layout falls apart (root cause of screenshot issues).
- * "From-scratch" detection: this session hasn't used the HTML pipeline (!htmlGenerated) AND the
+ * "From-scratch" detection: this session has no successful validated generation AND the
  * deck has almost no real content (≤ 2 non-decoration elements with text, i.e. blank/initial
  * template). If so, reject and steer toward generate_deck. Adding a single element to an
- * existing rich deck / fine-tuning after the HTML pipeline are unaffected.
+ * existing rich deck / fine-tuning after validated generation are unaffected.
  */
 function blockScratchBuild(
   toolName: string,
   slides: RenderSlide[],
   state?: SkillState,
 ): { output: string; isError: true; mutated: false; summary: string } | null {
-  if (state?.htmlGenerated) return null // Went through the HTML pipeline; subsequent native edits are legitimate
+  if (state?.validatedGenerationCompleted) return null // Validated generation landed; subsequent native edits are legitimate
   let contentEls = 0
   for (const slide of slides) {
     for (const n of collectNodeInfos(slide.nodes)) {
@@ -1453,8 +1458,8 @@ function blockScratchBuild(
   return {
     output:
       "For blank/from-scratch scenarios don't hand-assemble pages element by element with add_text_box/add_shape/add_smartart (crude layout). " +
-      'Use cloud generation instead: new whole deck → generate_deck; new pages for an existing deck → generate_deck(pages, insert_mode:"append"). ' +
-      'Write it beautifully in HTML/CSS and the system converts it into editable elements. Use native tools only when the deck already has polished content and one element needs refining.',
+      'Use validated generation instead: new whole deck → generate_deck; new pages for an existing deck → generate_deck(pages, insert_mode:"append"). ' +
+      'The model emits a strict semantic recipe and the trusted local compiler creates editable elements. Use native tools only when the deck already has polished content and one element needs refining.',
     isError: true,
     mutated: false,
     summary: t('aiSumFromScratchGuard', { label }),
@@ -1999,27 +2004,28 @@ async function executeTool(
     case 'generate_image': {
       const prompt = String(call.input.prompt ?? '').trim()
       if (!prompt) return fail(t('aiFailGenImage'), 'prompt must not be empty')
-      const refs = Array.isArray(call.input.referenceImageUrls)
-        ? (call.input.referenceImageUrls as unknown[]).map(String).filter(Boolean)
-        : undefined
+      const idx = Number(call.input.slideIndex)
+      if (!slides[idx])
+        return fail(t('aiFailGenImage'), `slideIndex out of range (0-${slides.length - 1})`)
       const r = await window.slidesApi.generateImage({
         prompt,
-        model: call.input.model ? String(call.input.model) : undefined,
-        referenceImageUrls: refs,
+        slideIndex: idx,
+        xPx: Number(call.input.x),
+        yPx: Number(call.input.y),
+        wPx: Number(call.input.w),
+        hPx: Number(call.input.h),
+        fitWidthPx: access.fitWidthPx,
         aspectRatio: call.input.aspectRatio ? String(call.input.aspectRatio) : undefined,
       })
-      if (!r.url) return fail(t('aiFailGenImage'), r.error ?? 'Generation failed')
-      const display: ToolDisplay = {
-        kind: 'images',
-        items: [{ url: r.url, title: prompt.slice(0, 60) }],
-      }
+      if (!r.slide || !r.sourceId)
+        return fail(t('aiFailGenImage'), r.error ?? 'Generation failed')
+      access.applySlide(idx, r.slide)
       return {
-        output: `Image generated, URL: ${r.url}\nInsert it into the target page with insert_web_image.`,
-        mutated: false,
+        output: `Generated and inserted a native picture on page ${idx + 1}, element id=${r.sourceId}.`,
+        mutated: true,
         summary: t('aiSumGenImage', {
           prompt: `${prompt.slice(0, 20)}${prompt.length > 20 ? '…' : ''}`,
         }),
-        display,
       }
     }
 
@@ -2143,7 +2149,7 @@ async function executeTool(
       const idx = Number(call.input.slideIndex)
       if (!slides[idx])
         return fail(t('aiFailRegen'), `slideIndex out of range (0-${slides.length - 1})`)
-      if (!access.regenerateSlide || !access.generatePageCloud)
+      if (!access.applyRegeneratedPage || !access.generatePageArtifact)
         return fail(
           t('aiFailRegen'),
           'The current environment does not support the page-redo pipeline',
@@ -2158,13 +2164,13 @@ async function executeTool(
       const regenImages = Array.isArray(call.input.image_urls)
         ? (call.input.image_urls as unknown[]).map(String).filter((u) => /^https?:\/\//.test(u))
         : []
-      // Cloud generation, one retry then give up (same semantics as generate_deck pages)
+      // BYOK recipe generation + local compilation, one retry then give up.
       const backoff = access.retryBackoffMs ?? 2000
-      let marker: string | null = null
+      let artifact: PageGenerationArtifactV1 | null = null
       let lastErr = ''
-      for (let attempt = 0; attempt < 2 && !marker; attempt++) {
+      for (let attempt = 0; attempt < 2 && !artifact; attempt++) {
         if (attempt > 0 && backoff > 0) await new Promise((r) => setTimeout(r, backoff))
-        const res = await access.generatePageCloud({
+        const res = await access.generatePageArtifact({
           pageIndex: idx + 1,
           totalPages: slides.length,
           coreHook: '',
@@ -2176,24 +2182,24 @@ async function executeTool(
           canvasW: 1280,
           canvasH: 720,
         })
-        if (res.ok && res.marker) marker = res.marker
+        if (res.ok && res.artifact) artifact = res.artifact
         else lastErr = res.error ?? t('aiErrUnknown')
       }
-      if (!marker)
+      if (!artifact)
         return fail(
           t('aiFailRegen'),
-          `Cloud page generation failed (2 attempts): ${lastErr}. This is usually a temporary cloud service error — do not keep calling regenerate_slide in a loop. Instead, make the requested changes in place with execute_slide_script / set_element_* (group children are editable too), or tell the user to retry in a few minutes. The page was not modified.`,
+          `AI slide generation failed (2 attempts): ${lastErr}. Do not keep calling regenerate_slide in a loop. Retry later or edit the page in place. The page was not modified.`,
         )
-      const r = await access.regenerateSlide(idx, marker)
+      const r = await access.applyRegeneratedPage(idx, artifact)
       if (!r.ok)
         return fail(
           t('aiFailRegen'),
           `${r.error || 'Redo failed'} (the page was not modified; retry once, or edit it in place with execute_slide_script)`,
         )
-      if (state) state.htmlGenerated = true
+      if (state) state.validatedGenerationCompleted = true
       return {
         output:
-          `Redid page ${idx + 1} in place from the brief via cloud generation (other pages untouched; the user can undo). Fine-tune afterwards with execute_slide_script / set_element_* tools.` +
+          `Redid page ${idx + 1} in place through validated AI slide generation (other pages untouched; the user can undo). Fine-tune afterwards with execute_slide_script / set_element_* tools.` +
           imageFailNote(r.imageFailures),
         mutated: true,
         summary: t('aiSumRegen', { n: idx + 1 }),
@@ -2219,16 +2225,20 @@ async function executeTool(
     case 'generate_deck': {
       // ── Self-driven pipeline:
       //   1) Plan: use pages if passed; with topic, the tool plans the outline via LLM (batched recursion over threshold) — fixes missing pages at the input side.
-      //   2) Generate: batched concurrent cloud page generation (gsk slide_generate, one retry per page), **each batch lands immediately → frontend shows pages one by one**.
-      if (!access.generatePageCloud || !(await access.isCloudPageGenEnabled?.().catch(() => false)))
+      //   2) Generate: BYOK recipes compile locally into trusted opaque artifacts; each batch lands immediately.
+      const generatorCapabilities = await access.getPageGeneratorCapabilities?.().catch(() => ({
+        available: false,
+        reason: 'capability check failed',
+      }))
+      if (!access.generatePageArtifact || !generatorCapabilities?.available)
         return fail(
           t('aiFailGenDeck'),
-          'Cloud slide generation is unavailable — sign in to Genspark (gsk) first',
+          `AI slide generation is unavailable${generatorCapabilities?.reason ? `: ${generatorCapabilities.reason}` : ''}. Configure a supported BYOK provider and retry.`,
         )
-      if (!access.generateFromHtml)
+      if (!access.applyPageArtifacts)
         return fail(
           t('aiFailGenDeck'),
-          'The current environment does not support the HTML→pptx pipeline',
+          'The current environment does not support landing locally compiled slide artifacts',
         )
 
       // Hard gate: with unread text attachments present, refuse to generate.
@@ -2249,7 +2259,9 @@ async function executeTool(
       const insertMode: 'replace' | 'append' =
         call.input.insert_mode === 'append' ? 'append' : 'replace'
       const PLAN_BATCH = 12 // Per-batch planning cap (kept slightly conservative against truncation)
-      const GEN_BATCH = 2 // Per-page generation concurrency (opus large output + proxy concurrent streams time out easily; lowered to 2, stability first)
+      // Compile and land sequentially so each artifact is issued against the revision returned by
+      // the previous landing. Parallel artifacts would become stale after the first mutation.
+      const GEN_BATCH = 1
       const BACKOFF_MS = access.retryBackoffMs ?? 2000 // Retry backoff base (rate limits/overload are mostly transient; immediate retries would hit them again)
 
       let coreHook = String(call.input.core_hook ?? '').trim()
@@ -2530,16 +2542,13 @@ async function executeTool(
       // New drafts are saved under this name instead of "Untitled-timestamp".
       const deckName = String(pages[0]?.title ?? '').trim() || topic || coreHook
 
-      // ── Step 2: generate page by page + land as we go (frontend shows pages one by one).
-      // The cloud service (gsk slide_generate) writes each page's HTML and converts it to a
-      // one-slide pptx; genOne returns a marker and landing reads the bytes.
-      // Land strictly in page order: nextToLand pointer; a page lands only when its marker is ready, keeping page order intact.
-      const htmlByIndex: (string | null)[] = new Array(total).fill(null)
+      // ── Step 2: generate page recipes, compile locally, and land opaque artifacts in order.
+      const artifactByIndex: (PageGenerationArtifactV1 | null | false)[] = new Array(total).fill(null)
       // Per-page completion flags (aligned with pages; same reference as state.pageDone, used by buildContext progress injection)
       const doneFlags: boolean[] = state?.pageDone ?? new Array(total).fill(false)
-      const genFailed: number[] = [] // Page indexes (0-based) whose HTML generation failed
-      const landFailed: number[] = [] // Page indexes (0-based) whose HTML generated but conversion/landing failed
-      const degraded: number[] = [] // Page indexes (0-based) that "landed" via the plain-text fallback — must be reported, otherwise dead pages appear silently
+      const genFailed: number[] = []
+      const landFailed: number[] = []
+      const degraded: number[] = []
       const deckImageFails: { page: number; url: string }[] = [] // Image download/conversion failures (page numbers are deck-global 1-based)
       const pageErrors: (string | undefined)[] = new Array(total).fill(undefined) // Last failure reason per page
       const auditWarns: string[] = [] // Content audit findings: placeholder text / near-empty pages
@@ -2591,7 +2600,7 @@ async function executeTool(
         for (let attempt = 0; attempt < 2; attempt++) {
           if (cancelled()) return null
           if (attempt > 0 && BACKOFF_MS > 0) await new Promise((r) => setTimeout(r, BACKOFF_MS))
-          const res = await access.generatePageCloud!({
+          const res = await access.generatePageArtifact!({
             pageIndex,
             totalPages: total,
             coreHook,
@@ -2606,9 +2615,10 @@ async function executeTool(
             canvasH,
             ...(signal ? { signal } : {}),
           })
-          if (res.ok && res.marker) {
+          if (res.ok && res.artifact) {
             pageErrors[pageIndex - 1] = undefined
-            return res.marker
+            for (const warning of res.warnings ?? []) auditWarns.push(`page ${pageIndex} ${warning}`)
+            return res.artifact
           }
           lastErr = res.error ?? t('aiErrUnknown')
         }
@@ -2618,12 +2628,12 @@ async function executeTool(
 
       // Land in page order: starting from nextToLand, land as many as possible (stop at a gap and wait for it to generate).
       const flushLanded = async () => {
-        while (nextToLand < total && htmlByIndex[nextToLand] !== null) {
+        while (nextToLand < total && artifactByIndex[nextToLand] !== null) {
           if (cancelled()) return
-          const html = htmlByIndex[nextToLand] as string
-          if (html.length > 0) {
+          const artifact = artifactByIndex[nextToLand]
+          if (artifact) {
             const m: 'replace' | 'append' = firstDone ? 'append' : insertMode
-            const r = await access.generateFromHtml!([html], m, deckName)
+            const r = await access.applyPageArtifacts!([artifact], m, deckName)
             if (r.ok) {
               if (r.fallbackReason) {
                 degraded.push(nextToLand)
@@ -2666,16 +2676,14 @@ async function executeTool(
         const batchIdxs = []
         for (let k = start; k < Math.min(start + GEN_BATCH, total); k++) batchIdxs.push(k)
         const results = await Promise.all(
-          batchIdxs.map(async (idx) => ({ idx, html: await genOne(pages[idx], idx + 1) })),
+          batchIdxs.map(async (idx) => ({ idx, artifact: await genOne(pages[idx], idx + 1) })),
         )
         if (cancelled()) break
-        for (const { idx, html } of results) {
-          if (html && html.length > 0) {
-            htmlByIndex[idx] = html
-            const audit = auditPageHtml(html)
-            if (audit) auditWarns.push(`page ${idx + 1} ${audit}`)
+        for (const { idx, artifact } of results) {
+          if (artifact) {
+            artifactByIndex[idx] = artifact
           } else {
-            htmlByIndex[idx] = '' // Empty-string placeholder; doesn't block subsequent landings
+            artifactByIndex[idx] = false // Failure sentinel; doesn't block subsequent landings.
             genFailed.push(idx)
             pageProgressItems[idx] = {
               ...pageProgressItems[idx]!,
@@ -2697,13 +2705,16 @@ async function executeTool(
         const retryIdxs = [...new Set(landFailed)].sort((a, b) => a - b)
         for (const idx of retryIdxs) {
           if (cancelled()) break
-          const html = htmlByIndex[idx]
-          if (!html) continue
+          // Artifacts are one-time-use. A failed landing may already have consumed the first
+          // artifact, so compile a fresh one instead of attempting replay.
+          const artifact = await genOne(pages[idx], idx + 1)
+          if (!artifact) continue
+          artifactByIndex[idx] = artifact
           const isFirstLand = !firstDone
           const r = isFirstLand
-            ? await access.generateFromHtml!([html], insertMode, deckName)
-            : await access.generateFromHtml!(
-                [html],
+            ? await access.applyPageArtifacts!([artifact], insertMode, deckName)
+            : await access.applyPageArtifacts!(
+                [artifact],
                 'insert_at',
                 deckName,
                 baseOffset + doneFlags.slice(0, idx).filter(Boolean).length,
@@ -2745,7 +2756,7 @@ async function executeTool(
 
       // User stopped midway: keep landed pages and finish honestly (no more retries / no failed-page reporting)
       if (cancelled()) {
-        if (state) state.htmlGenerated = landedPages > 0 || state.htmlGenerated
+        if (state) state.validatedGenerationCompleted = landedPages > 0 || state.validatedGenerationCompleted
         access.onProgress?.({
           stage: 'done',
           total: landedPages,
@@ -2754,7 +2765,9 @@ async function executeTool(
         return cancelResult(landedPages, total)
       }
 
-      if (state) state.htmlGenerated = true
+      if (state)
+        state.validatedGenerationCompleted =
+          landedPages > 0 || state.validatedGenerationCompleted
 
       // ── Sidecar persistence (fail-open): write styleSkill to .styleskill.json next to the draft
       if (landedPages > 0 && access.saveSidecar && styleSkill) {
@@ -2790,11 +2803,11 @@ async function executeTool(
 
       const note = buildProgressNote(state)
       const progressTail = note ? `\n${note}` : ''
-      // Faithfully report all unfinished pages (both HTML generation failures and conversion/landing failures; all already retried once)
+      // Faithfully report all unfinished pages (recipe generation/compiler or landing failures).
       const stillFailed: number[] = []
       for (let i = 0; i < total; i++) if (!doneFlags[i]) stillFailed.push(i + 1)
       const briefErr = (s?: string) => (s ? (s.length > 80 ? `${s.slice(0, 80)}…` : s) : '')
-      const okMsg = `Self-driven generation produced ${landedPages}/${total} pages (HTML written page by page, displayed as generated; failed pages were auto-retried).`
+      const okMsg = `Self-driven generation produced ${landedPages}/${total} pages through validated recipes and the local editable-slide compiler; failed pages were auto-retried.`
       const failDetail = stillFailed
         .map((n) => `page ${n}${pageErrors[n - 1] ? ` (${briefErr(pageErrors[n - 1])})` : ''}`)
         .join(', ')

@@ -412,7 +412,7 @@ textarea:disabled {
 }
 
 /* The AI group leads the band in every app: 4px side padding like the
-   docs/slides .ribbon-group, so the Genspark mark sits at the same x. */
+   docs/slides .ribbon-group, so the hosted service mark sits at the same x. */
 .ribbon-group:has(.ai-entry) {
   padding: 2px 4px;
 }
@@ -565,7 +565,7 @@ textarea:disabled {
 }
 
 .ribbon-tool.large.as-button.ai-entry.active {
-  /* neutral gray, shared with the docs/slides Genspark entries */
+  /* neutral gray, shared with the docs/slides hosted service entries */
   background: #ebebeb;
 }
 
@@ -667,7 +667,7 @@ textarea:disabled {
   .ribbon {
     gap: 1px;
     /* keep the 6px 12px band padding: docs/slides never compact it, and a
-       narrower inset shifts the shared Genspark entry 2px when switching apps */
+       narrower inset shifts the shared hosted service entry 2px when switching apps */
   }
 
   .ribbon-group {
@@ -1429,7 +1429,7 @@ select.select-like {
   box-shadow: 0 2px 6px rgb(74 92 255 / 25%);
 }
 
-/* Genspark brand logo (shared by the collapse button and the AI panel title) */
+/* hosted service brand logo (shared by the collapse button and the AI panel title) */
 .genspark-badge {
   display: block;
   width: 22px;
@@ -3554,7 +3554,7 @@ textarea:focus {
 }
 
 /* textarea: 15px / 21px fixed line-height, auto-grow band
- * (resting height 25% taller than default, matching the Genspark for PowerPoint prompt box) */
+ * (resting height 25% taller than default, matching the hosted service for PowerPoint prompt box) */
 .ai-input-box textarea {
   display: block;
   width: 100%;
@@ -3679,7 +3679,7 @@ textarea:focus {
 .ai-attachments {
   display: flex;
   gap: 8px;
-  /* single row inside the prompt box, above the textarea (Genspark composer style):
+  /* single row inside the prompt box, above the textarea (hosted service composer style):
      extra images run past the box edge and scroll horizontally.
      scroll (not auto) + zero bottom padding: the always-present 4px scrollbar lane
      doubles as the bottom padding, so overflowing never grows the strip and
@@ -3783,7 +3783,7 @@ textarea:focus {
   background: #fafafa;
 }
 
-/* the type icon sits in its own bordered white tile, like the Genspark card */
+/* the type icon sits in its own bordered white tile, like the hosted service card */
 .ai-attachment-card-icon {
   display: flex;
   flex-shrink: 0;

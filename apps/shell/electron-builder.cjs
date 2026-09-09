@@ -3,7 +3,7 @@
  * auto-update feed URL can be injected at build time instead of living in
  * the repo).
  *
- * GENOFFICE_UPDATE_URL — public base URL of the update channel (the generic
+ * CAPTIVELA_OFFICE_UPDATE_URL — public base URL of the update channel (the generic
  * provider prefix that serves latest.yml / latest-mac.yml). Required for
  * release builds; CI provides it as a repository secret. For local release
  * builds put it in apps/shell/electron-builder.env (gitignored) — the
@@ -22,8 +22,9 @@
 
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
+const { verifyWindowsPackageInputs } = require('../../tools/windows-package-inputs.cjs')
 
-const updateUrl = process.env.GENOFFICE_UPDATE_URL
+const updateUrl = process.env.CAPTIVELA_OFFICE_UPDATE_URL || process.env.GENOFFICE_UPDATE_URL
 const releaseSigning = process.env.CAPTIVELA_OFFICE_RELEASE_SIGNING === '1'
 
 // The module trees are electron-vite outputs produced by build:all; a missing
@@ -49,7 +50,7 @@ function assertModuleTreesPresent() {
 const config = {
   appId: 'com.captivela.office',
   productName: 'Captivela Office',
-  electronVersion: '41.7.1',
+  electronVersion: '41.10.5',
   directories: {
     output: 'release',
   },
@@ -79,8 +80,8 @@ const config = {
       from: '../pdf/out',
       to: 'modules/pdf',
     },
-    // The upstream build also shipped the Genspark `gsk` CLI tree here. The
-    // BYOK build never signs in to Genspark (see GENSPARK_CLOUD_ENABLED), so
+    // The upstream build also shipped its hosted-service CLI tree here. The
+    // BYOK build keeps hosted-service capabilities disabled, so
     // the CLI and its hoisting preflight are gone: nothing in the package
     // would run it.
   ],
@@ -126,8 +127,10 @@ const config = {
     },
   ],
   npmRebuild: false,
+  forceCodeSigning: releaseSigning,
   mac: {
     target: ['dmg', 'zip'],
+    artifactName: 'Captivela Office-${version}-${arch}.${ext}',
     category: 'public.app-category.productivity',
     // Signing, the hardened runtime and notarization only apply to a release
     // build. `identity: null` is what makes electron-builder skip codesigning
@@ -146,6 +149,8 @@ const config = {
     ],
   },
   win: {
+    icon: 'build/icon.ico',
+    artifactName: 'Captivela Office Setup ${version}.${ext}',
     target: [
       {
         target: 'nsis',
@@ -154,7 +159,7 @@ const config = {
     ],
     extraResources: [
       {
-        from: '../sheets/native/xlsx-engine/target/x86_64-pc-windows-gnu/release/xlsx-sidecar.exe',
+        from: '../sheets/native/xlsx-engine/target/x86_64-pc-windows-msvc/release/xlsx-sidecar.exe',
         to: 'native/xlsx-sidecar.exe',
       },
     ],
@@ -195,9 +200,13 @@ const config = {
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
+    shortcutName: 'Captivela Office',
+    uninstallDisplayName: 'Captivela Office',
   },
-  beforePack: async () => {
+  beforePack: async (context) => {
     assertModuleTreesPresent()
+    if (context.electronPlatformName === 'win32')
+      verifyWindowsPackageInputs({ root: join(__dirname, '../..') })
   },
   dmg: {
     sign: releaseSigning,

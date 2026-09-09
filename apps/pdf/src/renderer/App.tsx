@@ -3,7 +3,7 @@ import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react'
 // legacy build: the modern build relies on new APIs like Math.sumPrecise that the current
 // Electron V8 lacks, making embedded font parsing fail and whole pages render as garbled raw char codes
 import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { IconAiMark } from '@genoffice/ui'
 import { AiPanel } from './ai/AiPanel'
@@ -775,6 +775,7 @@ export default function App() {
     null,
   )
   const searchJumpRef = useRef<{ matches: SearchMatch[]; cur: number } | null>(null)
+  const loadingTaskRef = useRef<PDFDocumentLoadingTask | null>(null)
 
   /** Visible pages (with unsaved reorder, deleted pages hidden): position → original page index */
   const visList = useMemo(() => {
@@ -816,13 +817,16 @@ export default function App() {
     sidebar === 'thumbs',
   )
 
-  const loadDoc = useCallback(async (path: string, previous: PDFDocumentProxy | null) => {
+  const loadDoc = useCallback(async (path: string) => {
     const data = await window.pdfApi.readFile(path)
-    const loaded = await getDocument({
+    const loadingTask = getDocument({
       data: new Uint8Array(data),
       password: passwordRef.current,
       ...DOC_OPTS,
-    }).promise
+    })
+    const loaded = await loadingTask.promise
+    const previousTask = loadingTaskRef.current
+    loadingTaskRef.current = loadingTask
     const all: PageSize[] = []
     const rots: number[] = []
     for (let i = 1; i <= loaded.numPages; i++) {
@@ -852,8 +856,16 @@ export default function App() {
       (o) => setOutline(o && o.length > 0 ? (o as OutlineNode[]) : null),
       () => setOutline(null),
     )
-    if (previous) void previous.destroy()
+    if (previousTask) void previousTask.destroy()
   }, [])
+
+  useEffect(
+    () => () => {
+      void loadingTaskRef.current?.destroy()
+      loadingTaskRef.current = null
+    },
+    [],
+  )
 
   const openPath = useCallback(
     async (path: string) => {
@@ -861,7 +873,7 @@ export default function App() {
         setFilePath(path)
         // A newly opened file starts outside the autosave gate
         savedOnceRef.current = false
-        await loadDoc(path, null)
+        await loadDoc(path)
         setStatus('ready')
       } catch (err) {
         if ((err as Error | null)?.name === 'PasswordException') {
@@ -1293,7 +1305,7 @@ export default function App() {
       try {
         const el = scrollRef.current
         const scrollTop = el?.scrollTop ?? 0
-        await loadDoc(filePath, doc)
+        await loadDoc(filePath)
         requestAnimationFrame(() => {
           if (scrollRef.current) scrollRef.current.scrollTop = scrollTop
         })
@@ -1608,7 +1620,7 @@ export default function App() {
         opFailed(result.error)
         return
       }
-      if (!('canceled' in result)) await loadDoc(filePath, doc)
+      if (!('canceled' in result)) await loadDoc(filePath)
     })
 
   /** Print: save first (markups/forms/page ops all into the file), then reload from the file to render, avoiding a destroyed old doc */
@@ -1618,11 +1630,12 @@ export default function App() {
       setPrinting(true)
       try {
         const data = await window.pdfApi.readFile(filePath)
-        const pdoc = await getDocument({ data: new Uint8Array(data), ...DOC_OPTS }).promise
+        const loadingTask = getDocument({ data: new Uint8Array(data), ...DOC_OPTS })
+        const pdoc = await loadingTask.promise
         try {
           await printPdf(pdoc)
         } finally {
-          void pdoc.destroy()
+          void loadingTask.destroy()
         }
       } catch (err) {
         opFailed(err instanceof Error ? err.message : String(err))
@@ -1829,7 +1842,7 @@ export default function App() {
 
   if (status === 'password') {
     return (
-      <div className="app">
+      <div className="app captivela-app-chrome">
         <div className="pdf-placeholder">
           <form
             className="pdf-password"
@@ -1861,7 +1874,7 @@ export default function App() {
 
   if (status !== 'ready' || !doc) {
     return (
-      <div className="app">
+      <div className="app captivela-app-chrome">
         <div className="pdf-placeholder">
           {status === 'loading' ? t('loading') : status === 'error' ? t('loadError') : t('noFile')}
         </div>
@@ -1872,7 +1885,7 @@ export default function App() {
   const menuOrig = thumbMenu?.origIdx ?? -1
 
   return (
-    <div className="app">
+    <div className="app captivela-app-chrome">
       <div className="ribbon">
         <div className="ribbon-tabs">
           <button

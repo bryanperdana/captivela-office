@@ -1,5 +1,5 @@
 /**
- * Wrapper around gsk (Genspark CLI, @genspark/cli) — search / image generation /
+ * Wrapper around gsk (hosted service CLI, @genspark/cli) — search / image generation /
  * media analysis / upload / transcription.
  *
  * Execution: the main process spawns the CLI's JS entry with
@@ -78,8 +78,8 @@ function electronCompatArgs(): string[] {
 }
 
 /**
- * API key for Genspark LLM proxy / tool_cli auth; '' when not logged in.
- * Priority: GSK_API_KEY env → GenOffice's own key (bills to us via its
+ * API key for hosted service LLM proxy / tool_cli auth; '' when not logged in.
+ * Priority: GSK_API_KEY env → Captivela Office's own key (bills to us via its
  * key_name) → shared gsk CLI login (bills to the Claw bucket).
  */
 export function gskApiKey(): string {
@@ -346,7 +346,7 @@ export async function gskResolveDownloadUrl(url: string): Promise<string> {
   }
 }
 
-// ── Cloud single-slide generation (Genspark slide_generate) ─────────
+// ── Cloud single-slide generation (hosted service slide_generate) ─────────
 
 /**
  * Calls the tool_cli HTTP endpoint directly so structured params
@@ -396,7 +396,7 @@ async function toolCliPost(
   signal?: AbortSignal,
 ): Promise<unknown> {
   const key = gskApiKey()
-  if (!key) throw new Error('Not logged in to Genspark (gsk login)')
+  if (!key) throw new Error('Not logged in to hosted service (gsk login)')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const onAbort = () => controller.abort()
@@ -404,7 +404,7 @@ async function toolCliPost(
   try {
     const resp = await fetch(`${GSK_TOOL_CLI_BASE}${path}`, {
       method: 'POST',
-      // X-Agent-Type splits GenOffice usage out of the proxy's "Claw" billing bucket
+      // X-Agent-Type splits Captivela Office usage out of the proxy's "Claw" billing bucket
       headers: {
         'X-Api-Key': key,
         'Content-Type': 'application/json',

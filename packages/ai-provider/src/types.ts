@@ -18,7 +18,7 @@ export type AiProviderId =
   | 'litellm'
   | 'custom'
 
-/** Genspark account status (gsk login state; the sole auth source for AI features) */
+/** hosted service account status (gsk login state; the sole auth source for AI features) */
 export interface GenSparkAccountStatus {
   loggedIn: boolean
   email?: string
@@ -45,9 +45,21 @@ export interface AiProviderMeta {
   apiKeyOptional?: boolean
 }
 
+export interface AiImageGenerationSettings {
+  enabled: boolean
+  protocol: 'openai-images-v1'
+  /** Optional Images API model override. Blank means reuse the selected provider model. */
+  model?: string
+  size: '1024x1024' | '1536x1024' | '1024x1536'
+  /** Conservative V1 output: normalized PNG only. */
+  format: 'png'
+}
+
 export interface AiSettings {
   provider: AiProviderId
   providers: Record<AiProviderId, AiProviderConfig>
+  /** Optional on transport for backward-compatible fixtures/settings; validation normalizes it. */
+  imageGeneration?: AiImageGenerationSettings
   /** applies to every app; appended after the built-in system prompt via AgentLoop.systemSuffix */
   globalInstructions?: string
   /** per-app additions to the global instruction, keyed by app surface */
