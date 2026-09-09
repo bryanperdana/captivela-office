@@ -78,14 +78,20 @@ test('Electron Builder uses the Captivela Linux AppImage x64 contract', () => {
   assert.match(config.linux.extraResources[0].from, /target\/release\/xlsx-sidecar$/)
 })
 
-test('Linux release workflow uses Node 22 and validates package inputs', () => {
+test('Linux workflows route packaging through one reusable verified build', () => {
   const root = resolve(__dirname, '..')
-  const workflow = require('node:fs').readFileSync(
+  const manualWorkflow = require('node:fs').readFileSync(
     join(root, '.github/workflows/release-linux.yml'),
     'utf8',
   )
-  assert.match(workflow, /node-version: 22/)
-  assert.match(workflow, /npm run dist:linux/)
-  assert.match(workflow, /CAPTIVELA_OFFICE_UPDATE_URL/)
-  assert.match(workflow, /Verify packaged AppImage/)
+  const reusableWorkflow = require('node:fs').readFileSync(
+    join(root, '.github/workflows/linux-build.yml'),
+    'utf8',
+  )
+  assert.match(manualWorkflow, /uses: \.\/\.github\/workflows\/linux-build\.yml/)
+  assert.doesNotMatch(manualWorkflow, /action-gh-release/)
+  assert.match(reusableWorkflow, /node-version: 22/)
+  assert.match(reusableWorkflow, /npm run dist:linux/)
+  assert.match(reusableWorkflow, /Verify packaged AppImage/)
+  assert.match(reusableWorkflow, /--platform linux --write-manifest/)
 })

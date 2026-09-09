@@ -1,9 +1,9 @@
 # Installing Captivela Office Developer Preview
 
-Captivela Office 0.5.0 is distributed as an unsigned developer preview. Download
+Captivela Office 0.5.1 is distributed as an unsigned developer preview. Download
 only from the official GitHub prerelease:
 
-<https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.0>
+<https://github.com/bryanperdana/captivela-office/releases/tag/v0.5.1>
 
 Download `SHA256SUMS.txt` from the same release and verify the installer before
 opening it. Do not use Actions artifacts or third-party mirrors as permanent
@@ -11,11 +11,11 @@ release sources.
 
 ## Windows x64
 
-1. Download `Captivela.Office.Setup.0.5.0.exe` and `SHA256SUMS.txt`.
+1. Download `Captivela.Office.Setup.0.5.1.exe` and `SHA256SUMS.txt`.
 2. Verify the file in PowerShell:
 
    ```powershell
-   Get-FileHash "$HOME\Downloads\Captivela.Office.Setup.0.5.0.exe" -Algorithm SHA256
+   Get-FileHash "$HOME\Downloads\Captivela.Office.Setup.0.5.1.exe" -Algorithm SHA256
    Get-Content "$HOME\Downloads\SHA256SUMS.txt"
    ```
 
@@ -30,15 +30,15 @@ Do not disable SmartScreen or Windows Defender globally.
 ## macOS Apple Silicon
 
 This build requires an Apple Silicon Mac (`arm64`). Download
-`Captivela.Office-0.5.0-arm64.dmg` and `SHA256SUMS.txt` from the same release.
+`Captivela.Office-0.5.1-arm64.dmg` and `SHA256SUMS.txt` from the same release.
 
 ### 1. Verify the DMG container and checksum
 
 ```bash
 cd "$HOME/Downloads"
-hdiutil verify "Captivela.Office-0.5.0-arm64.dmg"
-shasum -a 256 "Captivela.Office-0.5.0-arm64.dmg"
-grep 'Captivela.Office-0.5.0-arm64.dmg' SHA256SUMS.txt
+hdiutil verify "Captivela.Office-0.5.1-arm64.dmg"
+shasum -a 256 "Captivela.Office-0.5.1-arm64.dmg"
+grep 'Captivela.Office-0.5.1-arm64.dmg' SHA256SUMS.txt
 ```
 
 `hdiutil verify` must succeed and both SHA-256 values must match exactly. If
@@ -72,6 +72,38 @@ Do not run `sudo spctl --master-disable`. Do not apply an ad-hoc signature to th
 published app: doing so changes its bytes and makes future verification and
 support ambiguous. If the narrowly scoped override fails, report the macOS
 version, Mac model, checksum, and exact Gatekeeper message in a GitHub issue.
+
+## Linux x86_64
+
+Download `Captivela-Office-0.5.1-x64.AppImage` and `SHA256SUMS.txt` from the
+same official prerelease. This preview targets 64-bit x86 Linux systems.
+
+### 1. Verify the AppImage checksum
+
+```bash
+cd "$HOME/Downloads"
+shasum -a 256 "Captivela-Office-0.5.1-x64.AppImage"
+grep 'Captivela-Office-0.5.1-x64.AppImage' SHA256SUMS.txt
+```
+
+Compare the complete 64-character SHA-256 values. Do not launch the file if
+they differ.
+
+### 2. Mark executable and launch
+
+```bash
+chmod +x "Captivela-Office-0.5.1-x64.AppImage"
+./"Captivela-Office-0.5.1-x64.AppImage"
+```
+
+If your distribution reports that FUSE or AppImage support is missing, install
+the distribution's documented FUSE/AppImage compatibility package, then retry.
+Alternatively, extract the already checksum-verified AppImage only when your
+local distribution documentation recommends that route. Do not run the app with
+`sudo` or disable Linux security controls globally.
+
+This unsigned preview uses manual upgrades: download and verify a newer official
+AppImage release rather than expecting in-app auto-update.
 
 ## What these checks prove
 

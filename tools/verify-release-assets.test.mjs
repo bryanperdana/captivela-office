@@ -24,14 +24,29 @@ test('Electron Builder pins deterministic public macOS artifact names', () => {
   assert.equal(builderConfig.mac.artifactName, 'Captivela Office-${version}-${arch}.${ext}')
 })
 
-test('maps internal spaced filenames to GitHub canonical dotted names', () => {
-  assert.deepEqual(expectedReleaseAssets('0.5.0').map(publicReleaseAssetName), [
-    'Captivela.Office.Setup.0.5.0.exe',
-    'Captivela.Office.Setup.0.5.0.exe.blockmap',
-    'Captivela.Office-0.5.0-arm64.dmg',
-    'Captivela.Office-0.5.0-arm64.dmg.blockmap',
-    'Captivela.Office-0.5.0-arm64.zip',
+test('maps internal filenames to GitHub canonical public names', () => {
+  assert.deepEqual(expectedReleaseAssets('0.5.1').map(publicReleaseAssetName), [
+    'Captivela.Office.Setup.0.5.1.exe',
+    'Captivela.Office.Setup.0.5.1.exe.blockmap',
+    'Captivela.Office-0.5.1-arm64.dmg',
+    'Captivela.Office-0.5.1-arm64.dmg.blockmap',
+    'Captivela.Office-0.5.1-arm64.zip',
+    'Captivela-Office-0.5.1-x64.AppImage',
   ])
+})
+
+test('includes one deterministic Linux AppImage in the release contract', async () => {
+  assert.deepEqual(expectedReleaseAssets('0.5.1', 'linux'), ['Captivela-Office-0.5.1-x64.AppImage'])
+
+  const directory = fixture('linux')
+  const result = await verifyReleaseAssets({
+    directory,
+    version: '0.5.0',
+    platform: 'linux',
+    writeManifest: true,
+  })
+  assert.deepEqual(result.assets, ['Captivela-Office-0.5.0-x64.AppImage'])
+  assert.equal(parseChecksumManifest(readFileSync(join(directory, 'SHA256SUMS'), 'utf8')).size, 1)
 })
 
 test('macOS workflow uses lipo input-file-first verification syntax', () => {
@@ -60,17 +75,61 @@ test('release workflow verifies the draft target before the published tag ref', 
   assert.doesNotMatch(workflow, /releases\/tags\/\$TAG.*\.draft/)
 })
 
-test('writes a basename-only manifest and verifies all v0.5.0 assets', async () => {
+test('unified prerelease builds and downloads a verified Linux AppImage from the resolved commit', () => {
+  const workflow = readFileSync(
+    join(import.meta.dirname, '../.github/workflows/release.yml'),
+    'utf8',
+  )
+  assert.match(workflow, /linux:\n {4}needs: resolve/)
+  assert.match(workflow, /uses: \.\/\.github\/workflows\/linux-build\.yml/)
+  assert.match(workflow, /needs: \[resolve, windows, macos, linux\]/)
+  assert.match(workflow, /captivela-office-linux-x64-\$\{\{ env\.ARTIFACT_KEY \}\}/)
+  assert.match(workflow, /incoming\/linux\/Captivela-Office-\$\{VERSION\}-x64\.AppImage/)
+})
+
+test('Linux reusable build verifies resolved source and stages a deterministic AppImage asset', () => {
+  const workflow = readFileSync(
+    join(import.meta.dirname, '../.github/workflows/linux-build.yml'),
+    'utf8',
+  )
+  assert.match(workflow, /workflow_call:/)
+  assert.match(workflow, /expected_commit:/)
+  assert.match(workflow, /EXPECTED_VERSION:/)
+  assert.match(workflow, /node-version: 22/)
+  assert.match(workflow, /npm run dist:linux/)
+  assert.match(workflow, /npm run verify:linux:appimage/)
+  assert.match(workflow, /Captivela-Office-\$\{version\}-x64\.AppImage/)
+  assert.match(
+    workflow,
+    /captivela-office-linux-x64-\$\{\{ inputs\.artifact_key \|\| github\.sha \}\}/,
+  )
+})
+
+test('Linux download documentation targets the immutable v0.5.1 prerelease asset', () => {
+  const readme = readFileSync(join(import.meta.dirname, '../README.md'), 'utf8')
+  const installation = readFileSync(join(import.meta.dirname, '../INSTALLATION.md'), 'utf8')
+  const asset = 'Captivela-Office-0.5.1-x64.AppImage'
+  const releaseUrl = `https://github.com/bryanperdana/captivela-office/releases/download/v0.5.1/${asset}`
+
+  assert.match(readme, new RegExp(releaseUrl.replaceAll('.', '\\.')))
+  assert.match(readme, /Linux x86_64/)
+  assert.match(installation, new RegExp(asset.replaceAll('.', '\\.')))
+  assert.match(installation, /chmod \+x/)
+  assert.match(installation, /manual upgrades/)
+  assert.doesNotMatch(readme, /actions\/runs\/.*AppImage/)
+})
+
+test('writes a basename-only manifest and verifies all six platform assets', async () => {
   const directory = fixture()
   const result = await verifyReleaseAssets({
     directory,
     version: '0.5.0',
     writeManifest: true,
   })
-  assert.equal(result.assets.length, 5)
+  assert.equal(result.assets.length, 6)
   const manifest = readFileSync(join(directory, 'SHA256SUMS'), 'utf8')
   assert.doesNotMatch(manifest, /captivela-release-assets-/)
-  assert.equal(parseChecksumManifest(manifest).size, 5)
+  assert.equal(parseChecksumManifest(manifest).size, 6)
 })
 
 test('supports platform-specific build artifact verification', async () => {

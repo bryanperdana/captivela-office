@@ -6,7 +6,7 @@ on:
       version:
         description: 'Exact application version (x.y.z)'
         required: true
-        default: '0.5.0'
+        default: '0.5.1'
         type: string
       ref:
         description: 'Exact commit SHA or branch to release; resolved once before both builds'
@@ -16,7 +16,7 @@ on:
       title:
         description: 'GitHub Release title'
         required: true
-        default: 'Captivela Office v0.5.0 — unsigned developer preview'
+        default: 'Captivela Office v0.5.1 — unsigned developer preview'
         type: string
       confirm:
         description: 'Type PUBLISH to build both platforms and publish the prerelease'
@@ -92,8 +92,19 @@ jobs:
       version: ${{ inputs.version }}
       artifact_key: ${{ needs.resolve.outputs.artifact_key }}
 
+  linux:
+    needs: resolve
+    permissions:
+      contents: read
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+      expected_commit: ${{ needs.resolve.outputs.commit }}
+      version: ${{ inputs.version }}
+      artifact_key: ${{ needs.resolve.outputs.artifact_key }}
+
   publish:
-    needs: [resolve, windows, macos]
+    needs: [resolve, windows, macos, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -133,6 +144,12 @@ jobs:
           name: captivela-office-macos-arm64-${{ env.ARTIFACT_KEY }}
           path: incoming/macos
 
+      - name: Download verified Linux AppImage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: captivela-office-linux-x64-${{ env.ARTIFACT_KEY }}
+          path: incoming/linux
+
       - name: Assemble and reverify final release payload
         run: |
           set -euo pipefail
@@ -144,6 +161,7 @@ jobs:
           cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg" "release-assets/Captivela.Office-${VERSION}-arm64.dmg"
           cp "incoming/macos/Captivela Office-${VERSION}-arm64.dmg.blockmap" "release-assets/Captivela.Office-${VERSION}-arm64.dmg.blockmap"
           cp "incoming/macos/Captivela Office-${VERSION}-arm64.zip" "release-assets/Captivela.Office-${VERSION}-arm64.zip"
+          cp "incoming/linux/Captivela-Office-${VERSION}-x64.AppImage" "release-assets/Captivela-Office-${VERSION}-x64.AppImage"
           node tools/verify-release-assets.mjs --dir release-assets --version "$VERSION" --public-names --write-manifest
           mv release-assets/SHA256SUMS release-assets/SHA256SUMS.txt
           {

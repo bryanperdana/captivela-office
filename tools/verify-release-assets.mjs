@@ -28,8 +28,9 @@ export function expectedReleaseAssets(version, platform = 'all') {
       `Captivela Office-${version}-arm64.dmg.blockmap`,
       `Captivela Office-${version}-arm64.zip`,
     ],
+    linux: [`Captivela-Office-${version}-x64.AppImage`],
   }
-  if (platform === 'all') return [...assets.windows, ...assets.macos]
+  if (platform === 'all') return [...assets.windows, ...assets.macos, ...assets.linux]
   if (!assets[platform]) throw new Error(`invalid platform: ${platform}`)
   return assets[platform]
 }
