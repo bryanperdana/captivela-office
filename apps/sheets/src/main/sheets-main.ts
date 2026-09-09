@@ -1316,8 +1316,14 @@ export async function createSheetsWindow(
     minHeight: 680,
     show: false,
     title: 'Captivela Sheets',
-    // Traffic lights sit inside the toolbar row.
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+    // Traffic lights sit inside the toolbar row on macOS; on Windows/Linux use
+    // the CSD overlay to match the docs/slides editors.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const }
+      : {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: { color: '#ffffff', symbolColor: '#444444', height: 40 },
+        }),
     webPreferences: {
       preload: runtime.preloadPath,
       contextIsolation: true,

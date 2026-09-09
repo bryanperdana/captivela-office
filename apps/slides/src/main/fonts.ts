@@ -158,31 +158,44 @@ function substitutesFor(family: string): string[] {
   if (!script) return SUBSTITUTES[classifyFamily(family)]
   const serif = SERIF_RE.test(family)
   const mac = process.platform === 'darwin'
+  const linux = process.platform === 'linux'
   switch (script) {
     case 'ja':
       return serif
         ? mac
           ? ['Hiragino Mincho ProN']
-          : ['Yu Mincho', 'MS Mincho']
+          : linux
+            ? ['Noto Serif CJK JP', 'Noto Sans CJK JP']
+            : ['Yu Mincho', 'MS Mincho']
         : mac
           ? ['Hiragino Sans']
-          : ['Yu Gothic', 'Meiryo', 'MS Gothic']
+          : linux
+            ? ['Noto Sans CJK JP', 'Noto Serif CJK JP']
+            : ['Yu Gothic', 'Meiryo', 'MS Gothic']
     case 'ko':
       return serif
         ? mac
           ? ['AppleMyungjo', 'Apple SD Gothic Neo']
-          : ['Batang', 'Malgun Gothic']
+          : linux
+            ? ['Noto Serif CJK KR', 'Noto Sans CJK KR']
+            : ['Batang', 'Malgun Gothic']
         : mac
           ? ['Apple SD Gothic Neo', 'AppleGothic']
-          : ['Malgun Gothic', 'Gulim']
+          : linux
+            ? ['Noto Sans CJK KR', 'Noto Serif CJK KR']
+            : ['Malgun Gothic', 'Gulim']
     case 'tc':
       return serif
         ? mac
           ? ['Songti TC']
-          : ['PMingLiU', 'Microsoft JhengHei']
+          : linux
+            ? ['Noto Serif CJK TC', 'Noto Sans CJK TC']
+            : ['PMingLiU', 'Microsoft JhengHei']
         : mac
           ? ['PingFang TC', 'Heiti TC', 'Songti TC']
-          : ['Microsoft JhengHei']
+          : linux
+            ? ['Noto Sans CJK TC', 'Noto Serif CJK TC']
+            : ['Microsoft JhengHei']
   }
 }
 

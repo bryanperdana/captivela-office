@@ -22,6 +22,7 @@
 
 const { existsSync } = require('node:fs')
 const { join } = require('node:path')
+const { verifyLinuxPackageInputs } = require('../../tools/linux-package-inputs.cjs')
 const { verifyWindowsPackageInputs } = require('../../tools/windows-package-inputs.cjs')
 
 const updateUrl = process.env.CAPTIVELA_OFFICE_UPDATE_URL || process.env.GENOFFICE_UPDATE_URL
@@ -174,6 +175,7 @@ const config = {
     // AppImage only: it needs no packaging identity, whereas deb/rpm would
     // require a Debian maintainer and homepage in the repo metadata.
     target: ['AppImage'],
+    artifactName: 'Captivela-Office-${version}-${arch}.${ext}',
     category: 'Office',
     icon: 'build/icon.png',
     // mac and win name the binary from productName; linux instead derives it
@@ -205,8 +207,9 @@ const config = {
   },
   beforePack: async (context) => {
     assertModuleTreesPresent()
-    if (context.electronPlatformName === 'win32')
-      verifyWindowsPackageInputs({ root: join(__dirname, '../..') })
+    const root = join(__dirname, '../..')
+    if (context.electronPlatformName === 'linux') verifyLinuxPackageInputs({ root })
+    if (context.electronPlatformName === 'win32') verifyWindowsPackageInputs({ root })
   },
   dmg: {
     sign: releaseSigning,

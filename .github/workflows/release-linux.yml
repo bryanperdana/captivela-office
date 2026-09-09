@@ -1,0 +1,103 @@
+name: Release Linux
+
+# Build and publish a Linux AppImage of Captivela Office.
+#
+# Triggers:
+#   - Manual dispatch (workflow_dispatch) with optional version input.
+#   - Tag push matching v* — also uploads the AppImage to the GitHub Release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version label (informational; the package.json version is baked in)'
+        required: false
+        default: ''
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # needed to upload release assets
+
+jobs:
+  build-linux:
+    # 22.04 — not ubuntu-latest (24.04): the newer AppArmor policy blocks the
+    # Electron renderer zygote even with --no-sandbox.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch, 2026-07
+        with:
+          toolchain: stable
+
+      - name: Cache cargo (xlsx-sidecar)
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: apps/sheets/native/xlsx-engine
+
+      # Newer Ubuntu kernels ship an AppArmor policy that blocks unprivileged
+      # user namespaces, which kills the Chromium zygote even with --no-sandbox.
+      # The knob only exists on kernels that enforce the restriction, so skip it
+      # where it is absent instead of failing the job.
+      - name: Allow unprivileged user namespaces (Electron)
+        run: |
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          else
+            echo "kernel.apparmor_restrict_unprivileged_userns not present — skipping"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & package Linux AppImage
+        env:
+          CAPTIVELA_OFFICE_UPDATE_URL: ${{ secrets.CAPTIVELA_OFFICE_UPDATE_URL }}
+        run: npm run dist:linux
+
+      - name: Verify packaged AppImage
+        run: npm run verify:linux:appimage -- apps/shell/release/*.AppImage
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-linux-appimage
+          path: apps/shell/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 90
+
+      # Also upload latest-linux.yml so the generic auto-update provider can
+      # serve it alongside the AppImage.
+      - name: Upload update manifest artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: captivela-office-linux-update-manifest
+          path: apps/shell/release/latest-linux.yml
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            apps/shell/release/*.AppImage
+            apps/shell/release/latest-linux.yml
+          fail_on_unmatched_files: true
