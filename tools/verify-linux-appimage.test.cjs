@@ -14,7 +14,10 @@ test('fails closed when no AppImage path is supplied', () => {
 })
 
 test('fails closed when the AppImage does not exist', () => {
-  const missing = join(mkdtempSync(join(tmpdir(), 'captivela-missing-appimage-')), 'missing.AppImage')
+  const missing = join(
+    mkdtempSync(join(tmpdir(), 'captivela-missing-appimage-')),
+    'missing.AppImage',
+  )
   const result = spawnSync(process.execPath, [script, missing], { encoding: 'utf8' })
   assert.equal(result.status, 1)
   assert.match(result.stderr, /AppImage is missing/)

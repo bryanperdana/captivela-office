@@ -27,7 +27,7 @@ of a hosted Genspark account.
   embedded credentials), the IPC-boundary validator, custom-instruction
   composition (`composeSystemSuffix`), and secret redaction.
 - `packages/ai-provider/src/compat.ts` — the "Test Connection" and "Test Tool
-  Calling" checks, which report *which* layer failed (connectivity, auth,
+  Calling" checks, which report _which_ layer failed (connectivity, auth,
   model, protocol, streaming, tool-calling, config) rather than one opaque
   error.
 - `packages/electron-utils/src/ai-settings-store.ts` — the settings store. API

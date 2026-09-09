@@ -3,7 +3,11 @@ const { chmodSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const { test } = require('node:test')
-const { ELF_MACHINE_X86_64, readElfMachine, verifyLinuxPackageInputs } = require('./linux-package-inputs.cjs')
+const {
+  ELF_MACHINE_X86_64,
+  readElfMachine,
+  verifyLinuxPackageInputs,
+} = require('./linux-package-inputs.cjs')
 
 function writeElf(path, machine = ELF_MACHINE_X86_64) {
   const bytes = Buffer.alloc(64)
@@ -40,9 +44,15 @@ test('fails closed when the Linux sidecar is missing', () => {
   for (const module of ['docs', 'sheets', 'slides', 'pdf'])
     mkdirSync(join(missingSidecarRoot, 'apps', module, 'out'), { recursive: true })
   mkdirSync(join(missingSidecarRoot, 'apps', 'shell', 'build'), { recursive: true })
-  writeFileSync(join(missingSidecarRoot, 'apps', 'shell', 'build', 'THIRD-PARTY-NOTICES.txt'), 'notices')
+  writeFileSync(
+    join(missingSidecarRoot, 'apps', 'shell', 'build', 'THIRD-PARTY-NOTICES.txt'),
+    'notices',
+  )
   writeFileSync(join(missingSidecarRoot, 'apps', 'shell', 'build', 'icon.png'), 'png')
-  assert.throws(() => verifyLinuxPackageInputs({ root: missingSidecarRoot }), /Linux x64 XLSX sidecar/)
+  assert.throws(
+    () => verifyLinuxPackageInputs({ root: missingSidecarRoot }),
+    /Linux x64 XLSX sidecar/,
+  )
 })
 
 test('rejects a non-x86_64 Linux sidecar', () => {
@@ -70,7 +80,10 @@ test('Electron Builder uses the Captivela Linux AppImage x64 contract', () => {
 
 test('Linux release workflow uses Node 22 and validates package inputs', () => {
   const root = resolve(__dirname, '..')
-  const workflow = require('node:fs').readFileSync(join(root, '.github/workflows/release-linux.yml'), 'utf8')
+  const workflow = require('node:fs').readFileSync(
+    join(root, '.github/workflows/release-linux.yml'),
+    'utf8',
+  )
   assert.match(workflow, /node-version: 22/)
   assert.match(workflow, /npm run dist:linux/)
   assert.match(workflow, /CAPTIVELA_OFFICE_UPDATE_URL/)

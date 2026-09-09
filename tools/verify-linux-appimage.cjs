@@ -19,7 +19,8 @@ function assertFile(path, label) {
 
 function assertExecutable(path, label) {
   const stat = assertFile(path, label)
-  if ((stat.mode & 0o111) === 0) throw new Error(`Packaged AppImage ${label} is not executable: ${path}`)
+  if ((stat.mode & 0o111) === 0)
+    throw new Error(`Packaged AppImage ${label} is not executable: ${path}`)
 }
 
 function verifyExtractedAppImage(root) {

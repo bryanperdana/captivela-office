@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write          # needed to upload release assets
+  contents: write # needed to upload release assets
 
 jobs:
   build-linux:

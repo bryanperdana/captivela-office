@@ -217,7 +217,8 @@ export function initDocsAutoUpdater(getWindow: () => BrowserWindow | null): void
   // Linux (AppImage full-package replacement). Other packaging formats
   // (deb/rpm/snap) use their own package managers; electron-updater silently
   // no-ops when the APPIMAGE env var is absent.
-  if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux') return
+  if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux')
+    return
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true

@@ -48,7 +48,8 @@ function verifyLinuxPackageInputs(options = {}) {
     'xlsx-sidecar',
   )
   const stat = assertFile(sidecar, 'Linux x64 XLSX sidecar')
-  if ((stat.mode & 0o111) === 0) throw new Error(`Linux x64 XLSX sidecar is not executable: ${sidecar}`)
+  if ((stat.mode & 0o111) === 0)
+    throw new Error(`Linux x64 XLSX sidecar is not executable: ${sidecar}`)
 
   const machine = readElfMachine(sidecar)
   if (machine !== ELF_MACHINE_X86_64)
