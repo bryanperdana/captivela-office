@@ -37,9 +37,12 @@
     "dist:mac": "npm run notices && npm run build:all && npm run dist:mac -w @genoffice/shell",
     "verify:win:inputs": "node tools/windows-package-inputs.cjs",
     "test:win:packaging": "node --test tools/windows-package-inputs.test.cjs",
+    "verify:linux:inputs": "node tools/linux-package-inputs.cjs",
+    "test:linux:packaging": "node --test tools/linux-package-inputs.test.cjs tools/verify-linux-appimage.test.cjs",
+    "verify:linux:appimage": "node tools/verify-linux-appimage.cjs",
     "pack:win:x64": "npm run notices && npm run build:all && npm run verify:win:inputs && npm run pack:win:x64 -w @genoffice/shell",
     "dist:win": "npm run notices && npm run build:all && npm run verify:win:inputs && npm run dist:win -w @genoffice/shell",
-    "dist:linux": "npm run notices && npm run build:all && npm run dist:linux -w @genoffice/shell"
+    "dist:linux": "npm run notices && npm run build:all && npm run verify:linux:inputs && npm run dist:linux -w @genoffice/shell"
   },
   "dependencies": {
     "ws": "^8.21.1"

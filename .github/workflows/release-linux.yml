@@ -38,7 +38,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -69,8 +69,11 @@ jobs:
 
       - name: Build & package Linux AppImage
         env:
-          GENOFFICE_UPDATE_URL: ${{ secrets.GENOFFICE_UPDATE_URL }}
+          CAPTIVELA_OFFICE_UPDATE_URL: ${{ secrets.CAPTIVELA_OFFICE_UPDATE_URL }}
         run: npm run dist:linux
+
+      - name: Verify packaged AppImage
+        run: npm run verify:linux:appimage -- apps/shell/release/*.AppImage
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
