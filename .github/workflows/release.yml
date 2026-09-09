@@ -175,14 +175,16 @@ jobs:
       - name: Create fail-closed draft prerelease
         run: |
           set -euo pipefail
-          release_id=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json id --jq '.id' 2>/dev/null || true)
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$TAG\")][0].id // empty")
           if [ -n "$release_id" ]; then
             state=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.draft')
             test "$state" = 'true' || { echo "Refusing to replace non-draft release $TAG" >&2; exit 1; }
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --draft
-            release_id=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json id --jq '.id')
+            release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq "[.[] | select(.tag_name == \"$TAG\")][0].id // empty")
           fi
           test -n "$release_id"
           printf '%s' "$release_id" > "$RUNNER_TEMP/captivela-release-id"
